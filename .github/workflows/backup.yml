@@ -1,0 +1,50 @@
+name: Backup — Code & Database
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # allows manual trigger from GitHub UI
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set up MySQL client
+        run: sudo apt-get install -y mysql-client
+
+      - name: Dump database
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_DATABASE: ${{ secrets.DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          mkdir -p db-backups
+          mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" \
+            -p"$DB_PASSWORD" "$DB_DATABASE" \
+            > db-backups/backup-$(date +%Y%m%d-%H%M%S).sql
+
+      - name: Upload DB dump as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: db-backups/
+          retention-days: 14
+
+      - name: Commit dump to backup branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin backup/db-snapshots || git checkout -b backup/db-snapshots
+          git checkout backup/db-snapshots
+          cp db-backups/*.sql .
+          git add *.sql
+          git commit -m "auto: db snapshot $(date +%Y-%m-%d_%H-%M)" || echo "nothing to commit"
+          git push origin backup/db-snapshots

@@ -1,0 +1,34 @@
+name: Restore — Database from Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_file:
+        description: 'SQL filename to restore (e.g. backup-20240101-120000.sql)'
+        required: true
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout backup branch
+        uses: actions/checkout@v4
+        with:
+          ref: backup/db-snapshots
+
+      - name: Set up MySQL client
+        run: sudo apt-get install -y mysql-client
+
+      - name: Restore database
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_DATABASE: ${{ secrets.DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" \
+            -p"$DB_PASSWORD" "$DB_DATABASE" \
+            < "${{ github.event.inputs.snapshot_file }}"
+          echo "Restore complete from ${{ github.event.inputs.snapshot_file }}"
