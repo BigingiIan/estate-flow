@@ -46,7 +46,7 @@ Route::middleware(['auth'])->group(function () {
                                         'unit'         => $lease->unit->unit_number,
                                         'phone'        => $lease->tenant->phone,
                                         'amount'       => $lease->rent_amount,
-                                        'days_overdue' => max(0, $daysOverdue),
+                                        'days_overdue' => (int) max(0, now()->diffInDays($lease->start_date)),
                                     ];
                                 })
                                 ->sortByDesc('days_overdue')
