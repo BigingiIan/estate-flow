@@ -20,7 +20,9 @@ class Property extends Model
         });
 
         static::creating(function (Property $property){
-            $property->user_id = Auth::id();
+            if(Auth::check() && empty($property->user_id)){
+                $property->user_id = Auth::id();
+            }
         });
     }
 
