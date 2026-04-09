@@ -7,12 +7,19 @@ use function Livewire\Volt\{state, computed};
 state(['search' => '']);
 
 $tenants = computed(function () {
-    return Tenant::with(['leases' => fn($q) => $q->where('status', 'active')->with('unit')])
-        ->when($this->search, fn($q) => $q
-            ->where('full_name', 'like', "%{$this->search}%")
-            ->orWhere('phone', 'like', "%{$this->search}%"))
-        ->latest()
-        ->get();
+    return Tenant::with([
+        'leases' => fn($q) => $q->where('status', 'active')
+            ->with(['unit', 'transactions' => fn($q) => $q
+                ->where('type', 'rent')
+                ->whereMonth('paid_at', now()->month)
+                ->whereYear('paid_at', now()->year)
+            ])
+    ])
+    ->when($this->search, fn($q) => $q
+        ->where('full_name', 'like', "%{$this->search}%")
+        ->orWhere('phone', 'like', "%{$this->search}%"))
+    ->latest()
+    ->get();
 });
 
 $summary = computed(function () {
@@ -99,11 +106,7 @@ $summary = computed(function () {
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Rent Status</p>
                     @if($activeLease)
                     @php
-                        $paid = $activeLease->transactions()
-                            ->where('type', 'rent')
-                            ->whereMonth('paid_at', now()->month)
-                            ->whereYear('paid_at', now()->year)
-                            ->exists();
+                        $paid = $activeLease->transactions->isNotEmpty();
                     @endphp
                     <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full"
                         style="background-color: {{ $paid ? '#E7EFF3' : '#FDECEA' }};

@@ -10,62 +10,42 @@ Route::get('/', function () {
 Route::middleware(['auth'])->group(function () {
 
     Route::get('/dashboard', function () {
+        $service = app(\App\Services\DashboardService::class);
+        $summary = $service->getSummary();
+
         $userId = auth()->id();
         $propertyIds = \App\Models\Property::where('user_id', $userId)->pluck('id');
         $unitIds = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
-        $leaseIds = \App\Models\Lease::whereIn('unit_id', $unitIds)
-                        ->where('status', 'active')->pluck('id');
-
-        $totalUnits = $unitIds->count();
-        $occupiedUnits = \App\Models\Unit::whereIn('id', $unitIds)
-                            ->where('status', 'occupied')->count();
-        $occupancyRate = $totalUnits > 0
-                            ? round(($occupiedUnits / $totalUnits) * 100)
-                            : 0;
-
-        $monthlyCollected = \App\Models\Transaction::whereIn('lease_id', $leaseIds)
-                                ->where('type', 'rent')
-                                ->whereMonth('paid_at', now()->month)
-                                ->whereYear('paid_at', now()->year)
-                                ->sum('amount');
-
-        $pendingArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
-                                ->where('status', 'active')
-                                ->get()
-                                ->sum(function ($lease) {
-                                    $paid = $lease->transactions()
-                                        ->where('type', 'rent')
-                                        ->whereMonth('paid_at', now()->month)
-                                        ->whereYear('paid_at', now()->year)
-                                        ->sum('amount');
-                                    return $paid < $lease->rent_amount ? $lease->rent_amount - $paid : 0;
-                                });
 
         $priorityArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
-                                ->where('status', 'active')
-                                ->where('start_date', '<', now())
-                                ->with(['tenant', 'unit'])
-                                ->get()
-                                ->map(function ($lease) {
-                                    $daysOverdue = now()->diffInDays($lease->start_date, false) * -1;
-                                    return [
-                                        'name'         => $lease->tenant->full_name,
-                                        'unit'         => $lease->unit->unit_number,
-                                        'phone'        => $lease->tenant->phone,
-                                        'amount'       => $lease->rent_amount,
-                                        'days_overdue' => (int) max(0, now()->diffInDays($lease->start_date)),
-                                    ];
-                                })
-                                ->sortByDesc('days_overdue')
-                                ->take(5)
-                                ->values();
+            ->where('status', 'active')
+            ->with(['tenant', 'unit'])
+            ->get()
+            ->map(function ($lease) {
+                return [
+                    'name'         => $lease->tenant->full_name,
+                    'unit'         => $lease->unit->unit_number,
+                    'phone'        => $lease->tenant->phone,
+                    'amount'       => $lease->rent_amount,
+                    'days_overdue' => (int) max(0, now()->diffInDays($lease->start_date)),
+                ];
+            })
+            ->sortByDesc('days_overdue')
+            ->take(5)
+            ->values();
 
-        return view('dashboard', compact(
-            'monthlyCollected',
-            'pendingArrears',
-            'occupancyRate',
-            'priorityArrears'
-        ));
+        return view('dashboard', [
+            'monthlyCollected' => $summary['monthly_collected'],
+            'pendingArrears'   => $summary['monthly_collected'] > 0
+                ? max(0, \App\Models\Lease::whereIn('unit_id', $unitIds)
+                    ->where('status', 'active')
+                    ->sum('rent_amount') - $summary['monthly_collected'])
+                : 0,
+            'occupancyRate'    => $summary['total_units'] > 0
+                ? round(($summary['occupied_units'] / $summary['total_units']) * 100)
+                : 0,
+            'priorityArrears'  => $priorityArrears,
+        ]);
     })->name('dashboard');
 
     Volt::route('/properties', 'pages/properties/index')->name('properties.index');
