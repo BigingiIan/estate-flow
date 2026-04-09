@@ -29,10 +29,17 @@ Route::middleware(['auth'])->group(function () {
                                 ->whereYear('paid_at', now()->year)
                                 ->sum('amount');
 
-        $pendingArrears = \App\Models\Transaction::whereIn('lease_id', $leaseIds)
-                                ->where('type', 'rent')
-                                ->whereNull('paid_at')
-                                ->sum('amount');
+        $pendingArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
+                                ->where('status', 'active')
+                                ->get()
+                                ->sum(function ($lease) {
+                                    $paid = $lease->transactions()
+                                        ->where('type', 'rent')
+                                        ->whereMonth('paid_at', now()->month)
+                                        ->whereYear('paid_at', now()->year)
+                                        ->sum('amount');
+                                    return $paid < $lease->rent_amount ? $lease->rent_amount - $paid : 0;
+                                });
 
         $priorityArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
                                 ->where('status', 'active')
