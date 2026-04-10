@@ -62,6 +62,16 @@ $logout = function (Logout $logout) {
                             : 'color:#6B7A82;' }}">
                         Leases
                     </a>
+                    <a href="{{ route('reports.index') }}" wire:navigate
+                        class="font-inter text-sm font-medium pb-0.5 transition-colors
+                        {{ request()->routeIs('reports.*')
+                            ? 'border-b-2 font-semibold'
+                            : 'hover:opacity-70' }}"
+                        style="{{ request()->routeIs('reports.*')
+                            ? 'color:#283439; border-color:#585E6C;'
+                            : 'color:#6B7A82;' }}">
+                        Reports
+                    </a>
                 </div>
             </div>
 
@@ -159,6 +169,8 @@ $logout = function (Logout $logout) {
                 class="block py-2 font-inter text-sm" style="color:#283439;">Tenants</a>
             <a href="{{ route('leases.index') }}" wire:navigate
                 class="block py-2 font-inter text-sm" style="color:#283439;">Leases</a>
+            <a href="{{ route('reports.index') }}" wire:navigate
+                class="block py-2 font-inter text-sm" style="color:#283439;">Reports</a>
         </div>
         <div class="pt-4 pb-3 px-4" style="border-top: 1px solid #E7EFF3;">
             <p class="font-inter text-sm font-semibold" style="color:#283439;">

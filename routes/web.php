@@ -59,6 +59,7 @@ Route::middleware(['auth'])->group(function () {
     Volt::route('/properties/{property}/units/create', 'pages/units/create')->name('units.create');
     Volt::route('/leases/create', 'pages/leases/create')->name('leases.create');
     Volt::route('/transactions/create', 'pages/transactions/create')->name('transactions.create');
+    Volt::route('/reports', 'pages/reports/index')->name('reports.index');
 
     Route::post('/leases/{lease}/terminate', function (\App\Models\Lease $lease) {
         $service = app(\App\Services\LeaseService::class);
