@@ -2,7 +2,10 @@
 
 use App\Models\Transaction;
 use App\Models\Property;
-use function Livewire\Volt\{state, computed};
+use function Livewire\Volt\{state, computed, uses};
+use Livewire\WithPagination;
+
+uses([WithPagination::class]);
 
 state(['search' => '', 'type' => '']);
 
@@ -17,7 +20,7 @@ $transactions = computed(function () {
         ->when($this->search, fn($q) => $q->whereHas('lease.tenant', fn($q) =>
             $q->where('full_name', 'like', "%{$this->search}%")))
         ->latest('paid_at')
-        ->get();
+        ->paginate(15);
 });
 
 ?>
@@ -108,10 +111,31 @@ $transactions = computed(function () {
 
         </div>
         @empty
-        <div class="px-6 py-12 text-center">
-            <p class="font-inter text-sm" style="color:#9BABB3;">No transactions found.</p>
+        <div class="px-6 py-16 text-center">
+            <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+                style="background-color:#E7EFF3;">
+                <svg class="w-7 h-7" style="color:#585E6C;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+            </div>
+            <p class="font-manrope text-base font-semibold mb-1" style="color:#283439;">No transactions yet</p>
+            <p class="font-inter text-sm mb-4" style="color:#9BABB3;">
+                Record your first payment transaction.
+            </p>
+            <a href="{{ route('transactions.create') }}" wire:navigate
+                class="inline-flex items-center font-inter text-xs font-semibold text-white
+                    px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + Record Payment
+            </a>
         </div>
         @endforelse
+    </div>
+
+    {{-- Pagination --}}
+    <div class="px-6 py-4 mt-4" style="border-top: 1px solid #EFF4F7;">
+        {{ $this->transactions->links() }}
     </div>
 
 </div>

@@ -88,6 +88,14 @@ mount(function (Property $property) {
                 @endif
             </div>
 
+            {{-- Edit button inside each unit card at the bottom --}}
+            <div class="flex items-center gap-2 mt-4 pt-4" style="border-top: 1px solid #EFF4F7;">
+                <a href="{{ route('units.edit', $unit) }}" wire:navigate
+                    class="font-inter text-xs font-medium px-3 py-1.5 rounded-md transition-opacity hover:opacity-80"
+                    style="background-color:#E7EFF3; color:#585E6C;">
+                    Edit Unit
+                </a>
+            </div>
         </div>
         @endforeach
     </div>

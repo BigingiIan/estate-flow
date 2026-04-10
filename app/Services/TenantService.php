@@ -46,4 +46,17 @@ class TenantService
             ->where('status', 'active')
             ->exists();
     }
+
+    public function delete(Tenant $tenant): void
+    {
+        $hasActiveLease = $tenant->leases()
+            ->where('status', 'active')
+            ->exists();
+
+        if ($hasActiveLease) {
+            throw new \Exception("Cannot delete a tenant with an active lease.");
+        }
+
+        $tenant->delete();
+    }
 }

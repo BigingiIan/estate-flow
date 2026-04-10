@@ -1,17 +1,21 @@
 <?php
 
-use function Livewire\Volt\{state, computed, mount};
+use function Livewire\Volt\{state, computed, uses};
 use App\Models\Property;
+use Livewire\WithPagination;
+
+uses(WithPagination::class);
 
 state(['search' => '']);
 
 $properties = computed(function () {
     return Property::withCount('units')
         ->with(['units' => fn($q) => $q->where('status', 'vacant')])
-        ->when($this->search, fn($q) => $q->where('name', 'like', "%{$this->search}%")
+        ->when($this->search, fn($q) => $q
+            ->where('name', 'like', "%{$this->search}%")
             ->orWhere('location', 'like', "%{$this->search}%"))
         ->latest()
-        ->get();
+        ->paginate(10);
 });
 
 $summary = computed(function () {
@@ -35,7 +39,7 @@ $summary = computed(function () {
                 Properties Portfolio
             </h1>
             <p class="font-inter text-sm mt-1" style="color:#9BABB3;">
-                Managing {{ $this->properties->count() }} active locations across the region.
+                Managing {{ $this->properties->total() }} active locations across the region.
             </p>
         </div>
         <a href="{{ route('properties.create') }}" wire:navigate
@@ -121,15 +125,41 @@ $summary = computed(function () {
                     style="background: linear-gradient(135deg, #585E6C, #4C5260);">
                     Manage
                 </a>
+                <a href="{{ route('properties.edit', $property) }}" wire:navigate
+                    class="font-inter text-xs font-medium px-4 py-2 rounded-md transition-opacity hover:opacity-80"
+                    style="background-color:#E7EFF3; color:#585E6C;">
+                    Edit
+                </a>
             </div>
         </div>
         @empty
-        <div class="px-6 py-12 text-center">
-            <p class="font-inter text-sm" style="color:#9BABB3;">
-                No properties found. Add your first property to get started.
+        <div class="px-6 py-16 text-center">
+            <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+                style="background-color:#E7EFF3;">
+                <svg class="w-7 h-7" style="color:#585E6C;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+            </div>
+            <p class="font-manrope text-base font-semibold mb-1" style="color:#283439;">No properties yet</p>
+            <p class="font-inter text-sm mb-4" style="color:#9BABB3;">
+                Add your first property to get started.
             </p>
+            <a href="{{ route('properties.create') }}" wire:navigate
+                class="inline-flex items-center font-inter text-xs font-semibold text-white
+                    px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + Add Property
+            </a>
         </div>
         @endforelse
     </div>
+
+    {{-- Pagination --}}
+    @if($this->properties->hasPages())
+    <div class="px-6 py-4 mt-4" style="border-top: 1px solid #EFF4F7;">
+        {{ $this->properties->links() }}
+    </div>
+    @endif
 
 </div>

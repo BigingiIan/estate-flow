@@ -128,6 +128,9 @@ $logout = function (Logout $logout) {
                                 {{ auth()->user()->email }}
                             </p>
                         </div>
+                        <x-dropdown-link :href="route('profile')" wire:navigate>
+                            {{ __('Profile') }}
+                        </x-dropdown-link>
                         <button wire:click="logout" class="w-full text-start">
                             <x-dropdown-link>
                                 {{ __('Log Out') }}

@@ -110,8 +110,26 @@ $leases = computed(function () {
 
         </div>
         @empty
-        <div class="px-6 py-12 text-center">
-            <p class="font-inter text-sm" style="color:#9BABB3;">No leases found.</p>
+        <div class="px-6 py-16 text-center">
+            <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+                style="background-color:#E7EFF3;">
+                <svg class="w-7 h-7" style="color:#585E6C;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M16 2v4h4"/>
+                </svg>
+            </div>
+            <p class="font-manrope text-base font-semibold mb-1" style="color:#283439;">No leases yet</p>
+            <p class="font-inter text-sm mb-4" style="color:#9BABB3;">
+                Create your first lease agreement to get started.
+            </p>
+            <a href="{{ route('leases.create') }}" wire:navigate
+                class="inline-flex items-center font-inter text-xs font-semibold text-white
+                    px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + Create Lease
+            </a>
         </div>
         @endforelse
     </div>

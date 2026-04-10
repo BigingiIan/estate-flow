@@ -54,4 +54,13 @@ class UnitService
         $unit->update(['status' => 'vacant']);
         return $unit;
     }
+
+    public function delete(Unit $unit): void
+    {
+        if ($unit->status === 'occupied') {
+            throw new \Exception("Cannot delete an occupied unit. Terminate the lease first.");
+        }
+
+        $unit->delete();
+    }
 }
