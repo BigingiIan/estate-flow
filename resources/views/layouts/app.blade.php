@@ -27,6 +27,22 @@
             {{-- No page header slot — navigation handles branding --}}
 
             <main>
+                @if(session('success'))
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+                        <div class="font-inter text-sm px-4 py-3 rounded-md"
+                            style="background-color:#E7EFF3; color:#585E6C;">
+                            {{ session('success') }}
+                        </div>
+                    </div>
+                @endif
+                @if(session('error'))
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+                        <div class="font-inter text-sm px-4 py-3 rounded-md"
+                            style="background-color:#FDECEA; color:#9F403D;">
+                            {{ session('error') }}
+                        </div>
+                    </div>
+                @endif
                 {{ $slot }}
             </main>
         </div>

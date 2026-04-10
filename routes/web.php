@@ -55,6 +55,23 @@ Route::middleware(['auth'])->group(function () {
     Volt::route('/tenants', 'pages/tenants/index')->name('tenants.index');
     Volt::route('/leases', 'pages/leases/index')->name('leases.index');
     Volt::route('/transactions', 'pages/transactions/index')->name('transactions.index');
+    Volt::route('/tenants/create', 'pages/tenants/create')->name('tenants.create');
+    Volt::route('/properties/{property}/units/create', 'pages/units/create')->name('units.create');
+
+    Route::post('/tenants/{tenant}/nudge', function (\App\Models\Tenant $tenant) {
+
+        $service = app(\App\Services\SmsService::class);
+
+        $lease = $tenant->leases()->where('status', 'active')->first();
+        $amount = $lease ? $lease->rent_amount : 0;
+        
+        $sent = $service->sendNudge($tenant->phone, $tenant->full_name, $amount);
+
+        return back()->with(
+            $sent ? 'success' : 'error',
+            $sent ? 'Nudge sent to ' . $tenant->full_name : 'Failed to send nudge.'
+        );
+    })->name('tenants.nudge');
 
 });
 

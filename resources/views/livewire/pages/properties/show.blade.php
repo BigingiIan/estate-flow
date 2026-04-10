@@ -36,6 +36,12 @@ mount(function (Property $property) {
                 {{ $property->location }}
             </p>
         </div>
+        <a href="{{ route('units.create', $property) }}" wire:navigate
+            class="inline-flex items-center gap-2 font-inter text-xs font-semibold
+                text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+            style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+            + Add Unit
+        </a>
     </div>
 
     {{-- Units Grid --}}
