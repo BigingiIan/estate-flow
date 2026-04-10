@@ -44,6 +44,12 @@ $leases = computed(function () {
                 <option value="expired">Expired</option>
                 <option value="terminated">Terminated</option>
             </select>
+            <a href="{{ route('leases.create') }}" wire:navigate
+                class="inline-flex items-center gap-2 font-inter text-xs font-semibold
+                    text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + New Lease
+            </a>
         </div>
     </div>
 
@@ -88,6 +94,18 @@ $leases = computed(function () {
                            color: {{ $lease->status === 'active' ? '#585E6C' : '#9F403D' }};">
                     {{ ucfirst($lease->status) }}
                 </span>
+
+                @if($lease->status === 'active')
+                <form method="POST" action="{{ route('leases.terminate', $lease) }}"
+                    onsubmit="return confirm('Terminate this lease? The unit will be marked as vacant.')">
+                    @csrf
+                    <button type="submit"
+                        class="font-inter text-xs font-medium px-3 py-1.5 rounded-md transition-opacity hover:opacity-80"
+                        style="background-color:#FDECEA; color:#9F403D;">
+                        Terminate
+                    </button>
+                </form>
+                @endif
             </div>
 
         </div>

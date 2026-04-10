@@ -52,7 +52,7 @@ $summary = computed(function () {
                 style="background-color:#FFFFFF; color:#283439; width:200px;" />
             <a href="{{ route('tenants.create') }}" wire:navigate
                 class="inline-flex items-center gap-2 font-inter text-xs font-semibold
-                    text-whit px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                    text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
                 style="background: linear-gradient(135deg, #585E6C, #4C5260);">
                 + Add Tenant
             </a>

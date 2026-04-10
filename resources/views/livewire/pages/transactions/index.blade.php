@@ -47,6 +47,12 @@ $transactions = computed(function () {
                 <option value="refund">Refund</option>
             </select>
         </div>
+        <a href="{{ route('transactions.create') }}" wire:navigate
+            class="inline-flex items-center gap-2 font-inter text-xs font-semibold
+                text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+            style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+            + Record Payment
+        </a>
     </div>
 
     {{-- Transactions List --}}

@@ -57,6 +57,14 @@ Route::middleware(['auth'])->group(function () {
     Volt::route('/transactions', 'pages/transactions/index')->name('transactions.index');
     Volt::route('/tenants/create', 'pages/tenants/create')->name('tenants.create');
     Volt::route('/properties/{property}/units/create', 'pages/units/create')->name('units.create');
+    Volt::route('/leases/create', 'pages/leases/create')->name('leases.create');
+    Volt::route('/transactions/create', 'pages/transactions/create')->name('transactions.create');
+
+    Route::post('/leases/{lease}/terminate', function (\App\Models\Lease $lease) {
+        $service = app(\App\Services\LeaseService::class);
+        $service->terminateLease($lease);
+        return back()->with('success', 'Lease terminated successfully.');
+    })->name('leases.terminate');
 
     Route::post('/tenants/{tenant}/nudge', function (\App\Models\Tenant $tenant) {
 
