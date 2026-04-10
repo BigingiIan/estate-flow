@@ -2,6 +2,7 @@
 
 use App\Models\Tenant;
 use function Livewire\Volt\{state, rules};
+use App\Services\TenantService;
 
 state([
     'full_name'         => '',
@@ -21,11 +22,16 @@ rules([
     'emergency_contact' => ['nullable', 'string', 'max:20'],
 ]);
 
-$save = function () {
+$save = function (TenantService $tenantService) {
     $validated = $this->validate();
-    Tenant::create($validated);
-    session()->flash('success', 'Tenant added successfully.');
-    $this->redirect(route('tenants.index'), navigate: true);
+
+    try {
+        $tenantService->create($validated);
+        session()->flash('success', 'Tenant added successfully.');
+        $this->redirect(route('tenants.index'), navigate: true);
+    } catch (\Exception $e) {
+        session()->flash('error', $e->getMessage());
+    }
 };
 
 ?>

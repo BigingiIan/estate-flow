@@ -3,6 +3,7 @@
 use App\Models\Property;
 use App\Models\Unit;
 use function Livewire\Volt\{state, rules, mount};
+use App\Services\UnitService;
 
 state([
     'property'    => null,
@@ -25,30 +26,28 @@ mount(function (Property $property) {
     $this->property = $property;
 });
 
-$save = function () {
+$save = function (UnitService $unitService) {
     $validated = $this->validate();
 
-    // Check unit number is unique within this property
-    $exists = Unit::where('property_id', $this->property->id)
-        ->where('unit_number', $validated['unit_number'])
-        ->exists();
-
-    if ($exists) {
-        $this->addError('unit_number', 'This unit number already exists in this property.');
-        return;
+    try {
+        // Option 1: Using UnitService (recommended if you have business logic)
+        $unitService->create($this->property, $validated);
+        
+        // Option 2: Direct creation (uncomment this and comment the above if you don't need UnitService)
+        // Unit::create([
+        //     'property_id' => $this->property->id,
+        //     'unit_number' => $validated['unit_number'],
+        //     'base_rent'   => $validated['base_rent'],
+        //     'bedrooms'    => $validated['bedrooms'],
+        //     'bathrooms'   => $validated['bathrooms'],
+        //     'status'      => $validated['status'],
+        // ]);
+        
+        session()->flash('success', 'Unit added successfully.');
+        $this->redirect(route('properties.show', $this->property), navigate: true);
+    } catch (\Exception $e) {
+        $this->addError('unit_number', $e->getMessage());
     }
-
-    Unit::create([
-        'property_id' => $this->property->id,
-        'unit_number' => $validated['unit_number'],
-        'base_rent'   => $validated['base_rent'],
-        'bedrooms'    => $validated['bedrooms'],
-        'bathrooms'   => $validated['bathrooms'],
-        'status'      => $validated['status'],
-    ]);
-
-    session()->flash('success', 'Unit added successfully.');
-    $this->redirect(route('properties.show', $this->property), navigate: true);
 };
 
 ?>
@@ -90,7 +89,7 @@ $save = function () {
             <div>
                 <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
                     style="color:#9BABB3;">Base Rent (KES)</label>
-                <input wire:model="base_rent" type="number" placeholder="35000"
+                <input wire:model="base_rent" type="number" step="0.01" placeholder="35000"
                     class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent
                         focus:outline-none focus:ring-0 transition-colors"
                     style="border-color:#E7EFF3; color:#283439;" />

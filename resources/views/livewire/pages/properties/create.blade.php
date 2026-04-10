@@ -2,6 +2,7 @@
 
 use App\Models\Property;
 use function Livewire\Volt\{state, rules};
+use App\Services\PropertyService;
 
 state([
     'name'        => '',
@@ -15,11 +16,16 @@ rules([
     'description' => ['nullable', 'string'],
 ]);
 
-$save = function () {
+$save = function (PropertyService $propertyService) {
     $validated = $this->validate();
-    Property::create($validated);
-    session()->flash('success', 'Property added successfully.');
-    $this->redirect(route('properties.index'), navigate: true);
+
+    try {
+        $propertyService->create($validated);
+        session()->flash('success', 'Property added successfully.');
+        $this->redirect(route('properties.index'), navigate: true);
+    } catch (\Exception $e) {
+        session()->flash('error', $e->getMessage());
+    }
 };
 
 ?>
