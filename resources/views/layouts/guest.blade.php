@@ -22,11 +22,11 @@
 
                 <div>
                     <h1 class="text-5xl font-bold text-slate-700 leading-tight">
-                        Efficient<br>management<br>
-                        <span class="text-slate-500">for modern assets.</span>
+                        Smarter<br>Modern<br>
+                        <span class="text-slate-500">Asset Management.</span>
                     </h1>
                     <p class="mt-6 text-slate-500 text-lg leading-relaxed max-w-md">
-                        Streamlining workflows for property managers and owners through architectural precision and intuitive design.
+                        Built for property managers and owners who want both precision and ease.
                     </p>
                 </div>
 
@@ -36,7 +36,7 @@
                         <div class="w-8 h-8 rounded-full bg-slate-500 border-2 border-white flex items-center justify-center text-white text-xs font-medium">B</div>
                         <div class="w-8 h-8 rounded-full bg-slate-600 border-2 border-white flex items-center justify-center text-white text-xs font-medium">C</div>
                     </div>
-                    <span class="text-xs tracking-widest text-slate-400 uppercase">Joined by 2,000+ firms</span>
+                    <span class="text-xs tracking-widest text-slate-400 uppercase">Made for Kenya</span>
                 </div>
             </div>
 
@@ -45,6 +45,23 @@
                 <div></div>
 
                 <div class="w-full max-w-md mx-auto">
+                    {{-- Validation error banner --}}
+                    @if($errors->any())
+                    <div class="mb-6 font-inter text-sm px-4 py-3 rounded-md"
+                        style="background-color:#FDECEA; color:#9F403D;">
+                        @foreach($errors->all() as $error)
+                            <p>{{ $error }}</p>
+                        @endforeach
+                    </div>
+                    @endif
+
+                    @if(session('status'))
+                    <div class="mb-6 font-inter text-sm px-4 py-3 rounded-md"
+                        style="background-color:#E7EFF3; color:#585E6C;">
+                        {{ session('status') }}
+                    </div>
+                    @endif
+
                     {{ $slot }}
                 </div>
 
