@@ -147,8 +147,9 @@ $summary = computed(function () {
                     </div>
 
                 @if($activeLease && !($activeLease->transactions->isNotEmpty()))
-                <a wire:navigate href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $tenant->phone) }}?text={{ urlencode('Dear ' . $tenant->full_name . ', this is a friendly reminder that your rent of KES ' . number_format($activeLease->rent_amount, 0) . ' is overdue. Please arrange payment at your earliest convenience. Thank you. - EstateFlow') }}"
+                <a href="https://wa.me/{{ preg_replace('/[^0-9]/', '', $tenant->phone) }}?text={{ urlencode('Dear ' . $tenant->full_name . ', this is a friendly reminder that your rent of KES ' . number_format($activeLease->rent_amount, 0) . ' is overdue. Please arrange payment at your earliest convenience. Thank you. - EstateFlow') }}"
                     target="_blank"
+                    rel="noopener noreferrer"
                     class="inline-flex items-center gap-2 font-inter text-xs font-medium
                         px-3 py-2 rounded-md transition-opacity hover:opacity-80"
                     style="background-color:#E7EFF3; color:#585E6C;">
