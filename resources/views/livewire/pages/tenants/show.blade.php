@@ -125,6 +125,12 @@ $leaseHistory = computed(function () {
                         </p>
                     </div>
                     <div class="flex gap-2 pt-2">
+                        <a href="{{ route('transactions.create', ['lease_id' => $activeLease->id]) }}" wire:navigate
+                            class="font-inter text-xs font-semibold text-white px-3 py-1.5 rounded-md 
+                                transition-opacity hover:opacity-90"
+                            style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                            + Record Payment
+                        </a>
                         <a href="{{ route('leases.renew', $activeLease) }}" wire:navigate
                             class="font-inter text-xs font-medium px-3 py-1.5 rounded-md"
                             style="background-color:#E7EFF3; color:#585E6C;">

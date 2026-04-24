@@ -3,7 +3,7 @@
 use App\Models\Lease;
 use App\Models\Property;
 use App\Services\TransactionService;
-use function Livewire\Volt\{state, rules, computed};
+use function Livewire\Volt\{state, rules, computed, mount};
 
 state([
     'lease_id'       => '',
@@ -22,6 +22,17 @@ rules([
     'paid_at'        => ['required', 'date'],
     'notes'          => ['nullable', 'string'],
 ]);
+
+mount(function() {
+    if (request()->has('lease_id')) {
+        $this->lease_id = request()->get('lease_id');
+        $lease = \App\Models\Lease::find($this->lease_id);
+        if($lease) {
+            $this->amount = $lease->rent_amount; 
+        }
+    }
+    $this->paid_at = now()->format('Y-m-d');
+});
 
 $leases = computed(function () {
     $propertyIds = Property::pluck('id');
