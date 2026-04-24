@@ -4,7 +4,7 @@ use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules;
+use Illuminate\Validation\Rules\Password;
 use function Livewire\Volt\layout;
 use function Livewire\Volt\rules;
 use function Livewire\Volt\state;
@@ -23,7 +23,17 @@ rules([
     'name' => ['required', 'string', 'max:255'],
     'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
     'phone' => ['required', 'string', 'max:20'],
-    'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
+    'password' => [
+        'required',
+        'string',
+        'confirmed',
+        Password::min(8)
+            ->letters()
+            ->mixedCase()
+            ->numbers()
+            ->symbols()
+            ->uncompromised(), // optional – checks against leaked passwords
+    ],
 ]);
 
 $register = function () {
@@ -124,6 +134,14 @@ $register = function () {
                     </svg>
                 </button>
             </div>
+            {{-- Password requirements hint --}}
+            <ul class="text-xs text-slate-400 mt-2 space-y-1 list-disc list-inside">
+                <li>Minimum 8 characters</li>
+                <li>At least one uppercase letter (A–Z)</li>
+                <li>At least one lowercase letter (a–z)</li>
+                <li>At least one number (0–9)</li>
+                <li>At least one special character (!@#$%^&* etc.)</li>
+            </ul>
             <x-input-error :messages="$errors->get('password')" class="mt-1" />
         </div>
 
