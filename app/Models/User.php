@@ -16,6 +16,21 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'google_id',
+        'role',
+        'phone',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'google_id',
+    ];
+
     public function properties(): HasMany
     {
         return $this->hasMany(Property::class);

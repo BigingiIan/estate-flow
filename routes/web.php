@@ -2,10 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
+use App\Http\Controllers\Auth\GoogleController;
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
 });
+
+Route::get('/login/google', [GoogleController::class, 'redirectToGoogle'])->name('login.google');
+Route::get('/login/google/callback', [GoogleController::class, 'handleGoogleCallback']);
 
 Route::middleware(['auth'])->group(function () {
 
