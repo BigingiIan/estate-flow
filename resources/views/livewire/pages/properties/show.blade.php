@@ -36,12 +36,29 @@ mount(function (Property $property) {
                 {{ $property->location }}
             </p>
         </div>
-        <a href="{{ route('units.create', $property) }}" wire:navigate
-            class="inline-flex items-center gap-2 font-inter text-xs font-semibold
+        <div class="flex items-center gap-2">
+            <form method="POST" action="{{ route('properties.mark-all-paid', $property) }}"
+                onsubmit="return confirm('Mark all active tenants as paid for {{ now()->format('F Y') }}?')">
+                @csrf
+                <button type="submit"
+                    class="font-inter text-xs font-medium px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                    style="background-color:#E7EFF3; color:#585E6C;">
+                    ✓ Mark All Paid
+                </button>
+            </form>
+            <a href="{{ route('units.batch', $property) }}" wire:navigate
+                class="inline-flex items-center gap-2 font-inter text-xs font-medium
+                px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background-color:#E7EFF3; color:#585E6C;">
+                + Batch Add Units
+            </a>
+            <a href="{{ route('units.create', $property) }}" wire:navigate
+                class="inline-flex items-center gap-2 font-inter text-xs font-semibold
                 text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
-            style="background: linear-gradient(135deg, #585E6C, #4C5260);">
-            + Add Unit
-        </a>
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + Add Unit
+            </a>
+        </div>
     </div>
 
     {{-- Units Grid --}}

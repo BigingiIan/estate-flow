@@ -21,31 +21,28 @@ class SmsService
 
     public function sendNudge(string $phone, string $tenantName, float $amount): bool
     {
+        $message = "Dear {$tenantName}, your rent balance of KES "
+            . number_format($amount, 0)
+            . " is overdue. Please arrange payment as soon as possible. - EstateFlow";
+
+        // Demo SMS mode — log to file instead of sending
+        $prefs = session('estateflow_prefs', []);
+        if ($prefs['demo_sms_mode'] ?? true) {
+            Log::info('DEMO SMS — would have sent to ' . $phone . ': ' . $message);
+            return true;
+        }
+
         try {
-
-            $message = "Dear {$tenantName}, your rent balance of KES "
-                . number_format($amount, 0)
-                . " is overdue. Please arrange payment as soon as possible. - EstateFlow";
-
             $result = $this->sms->send([
-                'to' => $this->formatPhone($phone),
+                'to'      => $this->formatPhone($phone),
                 'message' => $message,
             ]);
 
-            Log::info('SMS reminder sent', [
-                'phone' => $phone,
-                'result' => $result
-            ]);
-
+            Log::info('SMS reminder sent', ['phone' => $phone, 'result' => $result]);
             return true;
 
         } catch (\Exception $e) {
-
-            Log::error('SMS reminder failed', [
-                'phone' => $phone,
-                'error' => $e->getMessage()
-            ]);
-
+            Log::error('SMS reminder failed', ['phone' => $phone, 'error' => $e->getMessage()]);
             return false;
         }
     }

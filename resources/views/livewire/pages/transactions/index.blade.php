@@ -56,6 +56,12 @@ $transactions = computed(function () {
             style="background: linear-gradient(135deg, #585E6C, #4C5260);">
             + Record Payment
         </a>
+        <a href="{{ route('transactions.export') }}"
+            class="inline-flex items-center gap-2 font-inter text-xs font-medium
+            px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+            style="background-color:#E7EFF3; color:#585E6C;">
+            ↓ Export CSV
+        </a>
     </div>
 
     {{-- Transactions List --}}
