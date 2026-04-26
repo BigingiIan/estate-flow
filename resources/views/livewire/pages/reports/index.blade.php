@@ -227,7 +227,7 @@ $reportData = computed(function () {
                     {{ \Carbon\Carbon::parse($lease->end_date)->format('d M Y') }}
                 </p>
 
-                @php $daysLeft = now()->diffInDays($lease->end_date, false); @endphp
+                @php $daysLeft = (int) now()->diffInDays($lease->end_date, false); @endphp
                 <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full inline-flex w-fit"
                     style="background-color: {{ $daysLeft <= 7 ? '#FDECEA' : '#E7EFF3' }};
                            color: {{ $daysLeft <= 7 ? '#9F403D' : '#585E6C' }};">
