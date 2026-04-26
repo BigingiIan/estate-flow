@@ -78,8 +78,8 @@ $logout = function (Logout $logout) {
             {{-- Right: Search + Icons + Avatar --}}
             <div class="hidden sm:flex items-center gap-3">
 
-                {{-- Search --}}
-                <div class="relative">
+                {{-- Search -- }}
+                /*<div class="relative">
                     <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
                         style="color:#9BABB3;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -88,7 +88,8 @@ $logout = function (Logout $logout) {
                     <input type="text" placeholder="Search..."
                         class="font-inter text-sm pl-9 pr-4 py-1.5 rounded-md focus:outline-none w-44"
                         style="background-color:#EFF4F7; color:#283439;" />
-                </div>
+                </div> 
+                */
 
                 {{-- Notification bell --}}
                 <button class="p-1.5 rounded-md transition-colors hover:opacity-70"
