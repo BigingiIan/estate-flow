@@ -10,28 +10,46 @@ uses(WithPagination::class);
 state(['search' => '']);
 
 $tenants = computed(function () {
-    return Tenant::with([
-        'leases' => fn($q) => $q->where('status', 'active')
-            ->with(['unit', 'transactions' => fn($q) => $q
-                ->where('type', 'rent')
-                ->whereMonth('paid_at', now()->month)
-                ->whereYear('paid_at', now()->year)
-            ])
-    ])
-    ->when($this->search, fn($q) => $q
-        ->where('full_name', 'like', "%{$this->search}%")
-        ->orWhere('phone', 'like', "%{$this->search}%"))
-    ->latest()
-    ->paginate(15);
+    // Only tenants that belong to leases on units of properties owned by the logged-in user
+    return Tenant::whereHas('leases.unit.property', function ($query) {
+            $query->where('user_id', auth()->id());
+        })
+        ->with([
+            'leases' => fn($q) => $q->where('status', 'active')
+                ->with(['unit', 'transactions' => fn($q) => $q
+                    ->where('type', 'rent')
+                    ->whereMonth('paid_at', now()->month)
+                    ->whereYear('paid_at', now()->year)
+                ])
+        ])
+        ->when($this->search, fn($q) => $q
+            ->where('full_name', 'like', "%{$this->search}%")
+            ->orWhere('phone', 'like', "%{$this->search}%"))
+        ->latest()
+        ->paginate(15);
 });
 
 $summary = computed(function () {
-    $total        = Tenant::count();
-    $activeLeases = Lease::where('status', 'active')->count();
-    $renewalsDue  = Lease::where('status', 'active')
+    $userId = auth()->id();
+
+    // Total tenants belonging to this user's properties
+    $total = Tenant::whereHas('leases.unit.property', function ($q) use ($userId) {
+        $q->where('user_id', $userId);
+    })->count();
+
+    // Active leases on units of properties owned by this user
+    $activeLeases = Lease::whereHas('unit.property', function ($q) use ($userId) {
+        $q->where('user_id', $userId);
+    })->where('status', 'active')->count();
+
+    // Renewals due (end_date within 30 days) for active leases on user's properties
+    $renewalsDue = Lease::whereHas('unit.property', function ($q) use ($userId) {
+        $q->where('user_id', $userId);
+    })->where('status', 'active')
         ->whereNotNull('end_date')
         ->whereBetween('end_date', [now(), now()->addDays(30)])
         ->count();
+
     return compact('total', 'activeLeases', 'renewalsDue');
 });
 
