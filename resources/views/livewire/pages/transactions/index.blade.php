@@ -2,25 +2,43 @@
 
 use App\Models\Transaction;
 use App\Models\Property;
+use App\Models\Lease;
 use function Livewire\Volt\{state, computed, uses};
-use Livewire\WithPagination;
 
-uses([WithPagination::class]);
+uses([\Livewire\WithPagination::class]);
 
-state(['search' => '', 'type' => '']);
+state(['search' => '', 'type' => '', 'method' => '']);
 
 $transactions = computed(function () {
     $propertyIds = Property::pluck('id');
-    $unitIds = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
-    $leaseIds = \App\Models\Lease::whereIn('unit_id', $unitIds)->pluck('id');
+    $unitIds     = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
+    $leaseIds    = Lease::whereIn('unit_id', $unitIds)->pluck('id');
 
     return Transaction::whereIn('lease_id', $leaseIds)
-        ->with(['lease.tenant', 'lease.unit'])
+        ->with(['lease.tenant', 'lease.unit.property'])
         ->when($this->type, fn($q) => $q->where('type', $this->type))
-        ->when($this->search, fn($q) => $q->whereHas('lease.tenant', fn($q) =>
-            $q->where('full_name', 'like', "%{$this->search}%")))
+        ->when($this->method, fn($q) => $q->where('payment_method', $this->method))
+        ->when($this->search, fn($q) => $q->whereHas('lease.tenant',
+            fn($q) => $q->where('full_name', 'like', "%{$this->search}%")))
         ->latest('paid_at')
         ->paginate(15);
+});
+
+$summary = computed(function () {
+    $propertyIds = Property::pluck('id');
+    $unitIds     = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
+    $leaseIds    = Lease::whereIn('unit_id', $unitIds)->pluck('id');
+
+    return [
+        'total_this_month' => Transaction::whereIn('lease_id', $leaseIds)
+            ->where('type', 'rent')
+            ->whereMonth('paid_at', now()->month)
+            ->whereYear('paid_at', now()->year)
+            ->sum('amount'),
+        'total_count' => Transaction::whereIn('lease_id', $leaseIds)->count(),
+        'mpesa_count' => Transaction::whereIn('lease_id', $leaseIds)
+            ->where('payment_method', 'mpesa')->count(),
+    ];
 });
 
 ?>
@@ -28,43 +46,83 @@ $transactions = computed(function () {
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
     {{-- Header --}}
-    <div class="flex items-start justify-between mb-8">
+    <div class="flex items-start justify-between mb-6">
         <div>
             <h1 class="font-manrope text-2xl font-semibold" style="color:#283439;">Transactions</h1>
             <p class="font-inter text-sm mt-1" style="color:#9BABB3;">
                 All payment records across your portfolio.
             </p>
         </div>
-        <div class="flex items-center gap-3">
-            <input wire:model.live="search"
-                type="text" placeholder="Search tenant..."
-                class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
-                style="background-color:#FFFFFF; color:#283439; width:200px;" />
-            <select wire:model.live="type"
-                class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
-                style="background-color:#FFFFFF; color:#283439;">
-                <option value="">All Types</option>
-                <option value="rent">Rent</option>
-                <option value="deposit">Deposit</option>
-                <option value="penalty">Penalty</option>
-                <option value="refund">Refund</option>
-            </select>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('transactions.create') }}" wire:navigate
+                class="inline-flex items-center gap-2 font-inter text-xs font-semibold
+                    text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
+                + Record Payment
+            </a>
+            <a href="{{ route('transactions.export') }}"
+                class="inline-flex items-center gap-2 font-inter text-xs font-medium
+                    px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
+                style="background-color:#FFFFFF; color:#585E6C;">
+                ↓ CSV
+            </a>
         </div>
-        <a href="{{ route('transactions.create') }}" wire:navigate
-            class="inline-flex items-center gap-2 font-inter text-xs font-semibold
-                text-white px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
-            style="background: linear-gradient(135deg, #585E6C, #4C5260);">
-            + Record Payment
-        </a>
-        <a href="{{ route('transactions.export') }}"
-            class="inline-flex items-center gap-2 font-inter text-xs font-medium
-            px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
-            style="background-color:#E7EFF3; color:#585E6C;">
-            ↓ Export CSV
-        </a>
     </div>
 
-    {{-- Transactions List --}}
+    {{-- Summary KPIs --}}
+    <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
+            <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
+                Collected this month
+            </p>
+            <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
+                KES {{ number_format($this->summary['total_this_month'], 0) }}
+            </p>
+        </div>
+        <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
+            <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
+                Total transactions
+            </p>
+            <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
+                {{ number_format($this->summary['total_count']) }}
+            </p>
+        </div>
+        <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
+            <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
+                M-Pesa payments
+            </p>
+            <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
+                {{ number_format($this->summary['mpesa_count']) }}
+            </p>
+        </div>
+    </div>
+
+    {{-- Filters --}}
+    <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <input wire:model.live="search" type="text" placeholder="Search tenant..."
+            class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
+            style="background-color:#FFFFFF; color:#283439; width:200px;" />
+        <select wire:model.live="type"
+            class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
+            style="background-color:#FFFFFF; color:#283439;">
+            <option value="">All Types</option>
+            <option value="rent">Rent</option>
+            <option value="deposit">Deposit</option>
+            <option value="penalty">Penalty</option>
+            <option value="refund">Refund</option>
+        </select>
+        <select wire:model.live="method"
+            class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
+            style="background-color:#FFFFFF; color:#283439;">
+            <option value="">All Methods</option>
+            <option value="mpesa">M-Pesa</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cash">Cash</option>
+            <option value="cheque">Cheque</option>
+        </select>
+    </div>
+
+    {{-- Transactions list --}}
     <div class="rounded-xl overflow-hidden" style="background-color:#FFFFFF;">
         @forelse($this->transactions as $txn)
         <div class="flex items-center justify-between px-6 py-4 transition-colors"
@@ -87,7 +145,7 @@ $transactions = computed(function () {
                 </div>
             </div>
 
-            <div class="hidden sm:flex items-center gap-10">
+            <div class="flex items-center gap-8">
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Type</p>
                     <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full mt-1 inline-block"
@@ -113,35 +171,24 @@ $transactions = computed(function () {
                         {{ $txn->payment_method ? ucfirst(str_replace('_', ' ', $txn->payment_method)) : '—' }}
                     </p>
                 </div>
+                <a href="{{ route('transactions.receipt', $txn) }}" wire:navigate
+                    class="font-inter text-xs font-medium px-3 py-1.5 rounded-md"
+                    style="background-color:#E7EFF3; color:#585E6C;">
+                    Receipt
+                </a>
             </div>
-
         </div>
         @empty
-        <div class="px-6 py-16 text-center">
-            <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-                style="background-color:#E7EFF3;">
-                <svg class="w-7 h-7" style="color:#585E6C;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
-                </svg>
-            </div>
-            <p class="font-manrope text-base font-semibold mb-1" style="color:#283439;">No transactions yet</p>
-            <p class="font-inter text-sm mb-4" style="color:#9BABB3;">
-                Record your first payment transaction.
-            </p>
-            <a href="{{ route('transactions.create') }}" wire:navigate
-                class="inline-flex items-center font-inter text-xs font-semibold text-white
-                    px-4 py-2.5 rounded-md transition-opacity hover:opacity-90"
-                style="background: linear-gradient(135deg, #585E6C, #4C5260);">
-                + Record Payment
-            </a>
+        <div class="px-6 py-12 text-center">
+            <p class="font-inter text-sm" style="color:#9BABB3;">No transactions found.</p>
         </div>
         @endforelse
-    </div>
 
-    {{-- Pagination --}}
-    <div class="px-6 py-4 mt-4" style="border-top: 1px solid #EFF4F7;">
-        {{ $this->transactions->links() }}
+        @if($this->transactions->hasPages())
+        <div class="px-6 py-4" style="border-top: 1px solid #EFF4F7;">
+            {{ $this->transactions->links() }}
+        </div>
+        @endif
     </div>
 
 </div>

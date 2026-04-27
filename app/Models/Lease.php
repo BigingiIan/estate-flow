@@ -23,5 +23,5 @@ class Lease extends Model
         return $this->hasMany(Transaction::class);
     }
 
-    protected $fillable = ['unit_id', 'tenant_id', 'start_date', 'end_date', 'rent_amount', 'deposit_amount', 'deposit_status', 'status', 'notes'];
+    protected $fillable = ['unit_id', 'tenant_id', 'start_date', 'end_date', 'rent_amount', 'deposit_amount', 'deposit_status', 'status', 'notes', 'service_charge', 'escalation_rate', 'lease_type', 'business_name'];
 }

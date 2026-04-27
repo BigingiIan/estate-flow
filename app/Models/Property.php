@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 
 class Property extends Model
 {
-    protected $fillable = ['user_id', 'name', 'location', 'description'];
+    protected $fillable = ['user_id', 'name', 'location', 'description', 'type'];
 
     protected static function booted(): void
     {

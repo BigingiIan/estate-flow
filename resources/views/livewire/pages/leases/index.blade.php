@@ -50,6 +50,11 @@ $leases = computed(function () {
                 style="background: linear-gradient(135deg, #585E6C, #4C5260);">
                 + New Lease
             </a>
+            <a href="{{ route('leases.batch') }}" wire:navigate
+                class="font-inter text-xs font-medium px-4 py-2.5 rounded-md"
+                style="background-color:#E7EFF3; color:#585E6C;">
+                Batch Leases
+            </a>
         </div>
     </div>
 

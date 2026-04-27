@@ -25,5 +25,5 @@ class Unit extends Model
         return $this->hasOne(Lease::class)->where('status', 'active')->latestOfMany();
     }
 
-    protected $fillable = ['property_id', 'unit_number', 'base_rent', 'status', 'bedrooms', 'bathrooms'];
+    protected $fillable = ['property_id', 'unit_number', 'base_rent', 'status', 'bedrooms', 'bathrooms', 'unit_type', 'size_sqft', 'rate_per_sqft', 'floor', 'is_furnished', 'service_charge'];
 }

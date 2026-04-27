@@ -12,6 +12,12 @@ state([
     'bedrooms'    => 1,
     'bathrooms'   => 1,
     'status'      => 'vacant',
+    'unit_type'      => 'apartment',
+    'size_sqft'      => '',
+    'rate_per_sqft'  => '',
+    'floor'          => '',
+    'is_furnished'   => false,
+    'service_charge' => '',
 ]);
 
 rules([
@@ -21,6 +27,18 @@ rules([
     'bathrooms'   => ['required', 'integer', 'min:1'],
     'status'      => ['required', 'in:vacant,occupied,maintenance'],
 ]);
+
+$updatedSizeSqft = function () {
+    if ($this->size_sqft && $this->rate_per_sqft) {
+        $this->base_rent = $this->size_sqft * $this->rate_per_sqft;
+    }
+};
+
+$updatedRatePerSqft = function () {
+    if ($this->size_sqft && $this->rate_per_sqft) {
+        $this->base_rent = $this->size_sqft * $this->rate_per_sqft;
+    }
+};
 
 mount(function (Property $property) {
     $this->property = $property;
@@ -139,6 +157,71 @@ $save = function (UnitService $unitService) {
                     <option value="maintenance">Maintenance</option>
                 </select>
             </div>
+
+            {{-- Unit type --}}
+            <div>
+                <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
+                    style="color:#9BABB3;">Unit Type</label>
+                <select wire:model.live="unit_type"
+                    class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent focus:outline-none"
+                    style="border-color:#E7EFF3; color:#283439;">
+                    <option value="apartment">Apartment</option>
+                    <option value="office">Office</option>
+                    <option value="retail">Retail / Shop</option>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="studio">Studio</option>
+                </select>
+            </div>
+
+            {{-- Commercial fields — only show for non-apartment types --}}
+            @if(in_array($unit_type ?? 'apartment', ['office', 'retail', 'warehouse']))
+                <div class="grid grid-cols-2 gap-6 p-4 rounded-lg" style="background-color:#EFF4F7;">
+                    <div>
+                        <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
+                            style="color:#9BABB3;">Size (sq ft)</label>
+                        <input wire:model.live="size_sqft" type="number" placeholder="e.g. 1200"
+                            class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent focus:outline-none"
+                            style="border-color:#E7EFF3; color:#283439;" />
+                        <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
+                            Commercial rent = size × rate per sqft
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
+                            style="color:#9BABB3;">Rate per sq ft (KES)</label>
+                        <input wire:model.live="rate_per_sqft" type="number" placeholder="e.g. 103"
+                            class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent focus:outline-none"
+                            style="border-color:#E7EFF3; color:#283439;" />
+                    </div>
+                    <div>
+                        <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
+                            style="color:#9BABB3;">Floor</label>
+                        <input wire:model="floor" type="text" placeholder="e.g. 3rd Floor, Ground"
+                            class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent focus:outline-none"
+                            style="border-color:#E7EFF3; color:#283439;" />
+                    </div>
+                    <div>
+                        <label class="block font-inter text-xs font-medium uppercase tracking-widest mb-2"
+                            style="color:#9BABB3;">Monthly Service Charge (KES)</label>
+                        <input wire:model="service_charge" type="number" placeholder="e.g. 5000"
+                            class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent focus:outline-none"
+                            style="border-color:#E7EFF3; color:#283439;" />
+                    </div>
+                </div>
+
+                {{-- Auto-calculated rent --}}
+                @if($size_sqft && $rate_per_sqft)
+                    <div class="px-4 py-3 rounded-md" style="background-color:#E7EFF3;">
+                        <p class="font-inter text-xs" style="color:#585E6C;">
+                            Calculated base rent:
+                            <span class="font-manrope font-bold">
+                                KES {{ number_format($size_sqft * $rate_per_sqft, 0) }}/month
+                            </span>
+                            ({{ number_format($size_sqft, 0) }} sqft × KES {{ number_format($rate_per_sqft, 0) }}/sqft)
+                        </p>
+                    </div>
+                @endif
+            @endif
 
             {{-- Actions --}}
             <div class="flex items-center justify-between pt-4">

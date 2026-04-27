@@ -14,42 +14,99 @@ Route::get('/', function () {
 Route::middleware(['auth'])->group(function () {
 
     Route::get('/dashboard', function () {
-        $service = app(\App\Services\DashboardService::class);
-        $summary = $service->getSummary();
-
-        $userId = auth()->id();
+        $userId      = auth()->id();
         $propertyIds = \App\Models\Property::where('user_id', $userId)->pluck('id');
-        $unitIds = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
+        $unitIds     = \App\Models\Unit::whereIn('property_id', $propertyIds)->pluck('id');
+        $leaseIds    = \App\Models\Lease::whereIn('unit_id', $unitIds)
+                        ->where('status', 'active')->pluck('id');
 
+        $totalUnits    = $unitIds->count();
+        $occupiedUnits = \App\Models\Unit::whereIn('id', $unitIds)->where('status', 'occupied')->count();
+        $occupancyRate = $totalUnits > 0 ? round(($occupiedUnits / $totalUnits) * 100) : 0;
+
+        $monthlyCollected = \App\Models\Transaction::whereIn('lease_id', $leaseIds)
+            ->where('type', 'rent')
+            ->whereMonth('paid_at', now()->month)
+            ->whereYear('paid_at', now()->year)
+            ->sum('amount');
+
+        $pendingArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
+            ->where('status', 'active')
+            ->get()
+            ->sum(function ($lease) {
+                $paid = $lease->transactions()
+                    ->where('type', 'rent')
+                    ->whereMonth('paid_at', now()->month)
+                    ->whereYear('paid_at', now()->year)
+                    ->sum('amount');
+                return $paid < $lease->rent_amount ? $lease->rent_amount - $paid : 0;
+            });
+
+        // Vacancy cost tracker — daily lost revenue from vacant units
+        $vacantUnits = \App\Models\Unit::whereIn('property_id', $propertyIds)
+            ->where('status', 'vacant')->get();
+        $vacancyCost = $vacantUnits->sum(fn($u) => $u->base_rent / 30);
+        $vacantCount = $vacantUnits->count();
+
+        // Priority arrears with reliability score
         $priorityArrears = \App\Models\Lease::whereIn('unit_id', $unitIds)
             ->where('status', 'active')
             ->with(['tenant', 'unit'])
             ->get()
+            ->filter(function ($lease) {
+                return !$lease->transactions()
+                    ->where('type', 'rent')
+                    ->whereMonth('paid_at', now()->month)
+                    ->whereYear('paid_at', now()->year)
+                    ->exists();
+            })
             ->map(function ($lease) {
+                // Reliability score: 100 - (late payments / total months * 100)
+                $totalMonths = max(1, now()->diffInMonths($lease->start_date));
+                $lateMonths  = 0;
+                for ($i = 0; $i < min($totalMonths, 6); $i++) {
+                    $date = now()->subMonths($i);
+                    $paid = $lease->transactions()
+                        ->where('type', 'rent')
+                        ->whereMonth('paid_at', $date->month)
+                        ->whereYear('paid_at', $date->year)
+                        ->exists();
+                    if (!$paid) $lateMonths++;
+                }
+                $score = max(0, 100 - round(($lateMonths / min($totalMonths, 6)) * 100));
+
                 return [
-                    'name'         => $lease->tenant->full_name,
-                    'unit'         => $lease->unit->unit_number,
-                    'phone'        => $lease->tenant->phone,
-                    'amount'       => $lease->rent_amount,
-                    'days_overdue' => (int) max(0, now()->diffInDays($lease->start_date)),
+                    'name'              => $lease->tenant->full_name,
+                    'unit'              => $lease->unit->unit_number,
+                    'phone'             => $lease->tenant->phone,
+                    'amount'            => $lease->rent_amount,
+                    'days_overdue'      => (int) max(0, now()->diffInDays($lease->start_date)),
+                    'reliability_score' => $score,
                 ];
             })
             ->sortByDesc('days_overdue')
             ->take(5)
             ->values();
 
-        return view('dashboard', [
-            'monthlyCollected' => $summary['monthly_collected'],
-            'pendingArrears'   => $summary['monthly_collected'] > 0
-                ? max(0, \App\Models\Lease::whereIn('unit_id', $unitIds)
-                    ->where('status', 'active')
-                    ->sum('rent_amount') - $summary['monthly_collected'])
-                : 0,
-            'occupancyRate'    => $summary['total_units'] > 0
-                ? round(($summary['occupied_units'] / $summary['total_units']) * 100)
-                : 0,
-            'priorityArrears'  => $priorityArrears,
-        ]);
+        // Recent transactions
+        $recentTransactions = \App\Models\Transaction::whereIn('lease_id', $leaseIds)
+            ->with(['lease.tenant'])
+            ->latest('paid_at')
+            ->take(5)
+            ->get()
+            ->map(fn($t) => [
+                'tenant'    => $t->lease->tenant->full_name,
+                'reference' => $t->reference_code,
+                'method'    => ucfirst(str_replace('_', ' ', $t->payment_method ?? 'cash')),
+                'amount'    => $t->amount,
+                'date'      => \Carbon\Carbon::parse($t->paid_at)->format('d M'),
+            ]);
+
+        return view('dashboard', compact(
+            'monthlyCollected', 'pendingArrears', 'occupancyRate',
+            'priorityArrears', 'totalUnits', 'occupiedUnits',
+            'vacancyCost', 'vacantCount', 'recentTransactions'
+        ));
     })->name('dashboard');
 
     Volt::route('/settings', 'pages/settings/index')->name('settings');
@@ -102,6 +159,7 @@ Route::middleware(['auth'])->group(function () {
     Volt::route('/leases', 'pages/leases/index')->name('leases.index');
     Volt::route('/leases/create', 'pages/leases/create')->name('leases.create');
     Volt::route('/leases/{lease}/renew', 'pages/leases/renew')->name('leases.renew');
+    Volt::route('/leases/batch', 'pages/leases/batch')->name('leases.batch');
     
     Volt::route('/transactions', 'pages/transactions/index')->name('transactions.index');
     Volt::route('/transactions/create', 'pages/transactions/create')->name('transactions.create');
