@@ -10,12 +10,32 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        User::create([
-            'name'     => 'Ian Bigingi',
-            'email'    => 'ian@estateflow.co.ke',
-            'phone'    => '+254700000001',
-            'role'     => 'landlord',
-            'password' => Hash::make('password'),
-        ]);
+        $users = [
+            [
+                'name' => 'Ian Bigingi',
+                'email' => 'ian@estateflow.co.ke',
+                'phone' => '+254700000001',
+                'role' => 'landlord',
+                'password' => Hash::make('password'),
+            ],
+            [
+                'name' => 'Miriam Kilonzo',
+                'email' => 'miriam@estateflow.co.ke',
+                'phone' => '+254700000002',
+                'role' => 'manager',
+                'password' => Hash::make('password'),
+            ],
+            [
+                'name' => 'Daniel Mworia',
+                'email' => 'daniel@estateflow.co.ke',
+                'phone' => '+254700000003',
+                'role' => 'accountant',
+                'password' => Hash::make('password'),
+            ],
+        ];
+
+        foreach ($users as $user) {
+            User::create($user);
+        }
     }
 }
