@@ -1,0 +1,74 @@
+name: Backup Database Snapshots
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PowerShell dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+
+      - name: Prepare environment
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "DB_CONNECTION=${{ secrets.DB_CONNECTION || 'mysql' }}"
+            echo "DB_HOST=${{ secrets.DB_HOST }}"
+            echo "DB_PORT=${{ secrets.DB_PORT }}"
+            echo "DB_DATABASE=${{ secrets.DB_DATABASE }}"
+            echo "DB_USERNAME=${{ secrets.DB_USERNAME }}"
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
+          } >> .env
+
+      - name: Create snapshot
+        shell: pwsh
+        run: |
+          ./scripts/Invoke-DbBackup.ps1 -OutputDir "database/db-backups"
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-snapshot-${{ github.run_id }}
+          path: database/db-backups/*.sql
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Commit snapshot to backup branch
+        shell: pwsh
+        run: |
+          $snapshot = Get-ChildItem "database/db-backups" -Filter *.sql | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $snapshot) { throw "No snapshot file was created." }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin backup/db-snapshots:backup/db-snapshots
+          git switch backup/db-snapshots
+
+          New-Item -ItemType Directory -Force -Path snapshots | Out-Null
+          Copy-Item $snapshot.FullName "snapshots/$($snapshot.Name)" -Force
+
+          git add snapshots/$($snapshot.Name)
+          git commit -m "auto: db snapshot $($snapshot.BaseName)" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            git push origin backup/db-snapshots
+          } else {
+            Write-Host "No new snapshot changes to commit."
+          }
