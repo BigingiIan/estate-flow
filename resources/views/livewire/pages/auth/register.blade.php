@@ -37,7 +37,12 @@ rules([
 ]);
 
 $register = function () {
-    $validated = $this->validate();
+    $validated = $this->validate([
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+        'phone' => ['required', 'string', 'max:20'],
+        'password' => ['required', 'string', 'confirmed', Password::defaults()],
+    ]);
     $validated['password'] = Hash::make($validated['password']);
     $validated['role'] = 'landlord';
 
@@ -45,7 +50,7 @@ $register = function () {
 
     Auth::login($user);
 
-    return $this->redirectRoute('dashboard', navigate: true);
+    return $this->redirect(route('dashboard'));
 };
 ?>
 
