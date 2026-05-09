@@ -10,12 +10,15 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        User::create([
-            'name'     => 'Ian Bigingi',
-            'email'    => 'ian@estateflow.co.ke',
-            'phone'    => '+254700000001',
-            'role'     => 'landlord',
-            'password' => Hash::make('password'),
-        ]);
+        User::updateOrCreate(
+            ['email' => 'ian@estateflow.co.ke'],
+            [
+                'name' => 'Ian Bigingi',
+                'phone' => '+254700000001',
+                'role' => 'landlord',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+            ]
+        );
     }
 }

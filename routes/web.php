@@ -8,7 +8,9 @@ Schedule::command('leases:expire-overdue')->dailyAt('00:00');
 Schedule::command('reminders:send-rent')->monthlyOn(3, '09:00');
 
 Route::get('/', function () {
-    return redirect()->route('dashboard');
+    return auth()->check()
+        ? redirect()->route('dashboard')
+        : redirect()->route('login');
 });
 
 Route::middleware(['auth'])->group(function () {

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('unit_id')->constrained()->cascadeOnDelete();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->date('start_date');
-            $table->date('end_date');
+            $table->date('end_date')->nullable();
             $table->decimal('rent_amount', 10, 2);
             $table->decimal('deposit_amount', 10, 2)->default(0);
             $table->enum('deposit_status', ['pending', 'paid', 'refunded'])->default('pending');

@@ -6,11 +6,12 @@ use App\Http\Controllers\Api\V1\PropertyController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\TransactionController;
 use App\Http\Controllers\Api\V1\UnitController;
+use App\Http\Middleware\RequireApiToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Public auth endpoints
-Route::prefix('v1')->group(function () {
+Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('auth/login', function (Request $request) {
         $request->validate([
             'email'    => 'required|email',
@@ -43,7 +44,7 @@ Route::prefix('v1')->group(function () {
 });
 
 // Protected API routes
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1')->name('api.v1.')->middleware(['auth:sanctum', RequireApiToken::class])->group(function () {
 
     // Dashboard summary
     Route::get('dashboard', [DashboardController::class, 'index']);
