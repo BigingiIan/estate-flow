@@ -31,14 +31,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        Password::defaults(function () {
-            return Password::min(8)
-                ->letters()
-                ->mixedCase()
-                ->numbers()
-                ->symbols()
-                ->uncompromised();
-        });
+        Password::defaults(fn () => Password::min(8));
         View::composer('*', function($view){
             $view->with('currencyService', app(CurrencyService::class));
         });
