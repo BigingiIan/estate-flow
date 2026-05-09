@@ -2,182 +2,222 @@
 
 > Property management, architecturally refined.
 
-A modern, single-landlord property management system built for the Kenyan market. EstateFlow replaces Excel spreadsheets with a clean, fast web application that manages properties, units, tenants, leases, and transactions — with automated rent reminders via SMS and a real-time analytics dashboard.
+EstateFlow is a landlord-focused property management system built for the Kenyan market. It replaces spreadsheets with a clean Laravel app for managing properties, units, tenants, leases, transactions, reminders, and reporting, with automation for testing, backups, and scheduled maintenance.
 
 ---
 
 ## Tech stack
 
-| Layer    | Technology                             |
-| -------- | -------------------------------------- |
-| Backend  | Laravel 13 (PHP 8.4)                   |
-| Frontend | Livewire Volt (Functional API) + Blade |
-| Styling  | Tailwind CSS + Alpine.js               |
-| Database | MySQL 8.0                              |
-| SMS      | Africa's Talking SDK                   |
-| Build    | Vite                                   |
-| Testing  | Pest                                   |
-| CI/CD    | GitHub Actions                         |
+| Layer | Technology |
+| --- | --- |
+| Backend | Laravel 13 (PHP 8.4) |
+| Frontend | Livewire Volt + Blade |
+| Styling | Tailwind CSS + Alpine.js |
+| Database | MySQL 8.0 locally, SQLite in CI tests |
+| SMS | Africa's Talking SDK |
+| Build | Vite |
+| Testing | Pest |
+| Automation | GitHub Actions |
 
 ---
 
-## Features
+## Product scope
 
-### Core
+- Landlord-only system design
+- Multi-property portfolio management
+- Tenant records with emergency contacts and ID tracking
+- Lease lifecycle management
+- Payment recording with receipts and references
+- Dashboard KPIs, arrears, occupancy, and reports
+- Commercial unit support
+- Scheduled reminders and lease expiry automation
 
-- **Multi-property management** — manage unlimited properties and units under one account
-- **Tenant records** — full tenant profiles with ID verification and emergency contacts
-- **Lease lifecycle** — create, renew, and terminate leases with automatic unit status updates
-- **Transaction recording** — log payments by type (rent, deposit, penalty, refund) and method (M-Pesa, bank transfer, cash, cheque)
-- **Printable receipts** — auto-generated reference codes and printable payment receipts
+There are no separate tenant, agent, or staff application roles in the current system.
 
-### Dashboard
+---
 
-- Real-time KPI cards — rent collected, pending arrears, occupancy rate
-- **Vacancy cost tracker** — shows daily revenue lost from vacant units
-- **Tenant reliability score** — 0–100 score based on last 6 months of payment history
-- Priority arrears list with WhatsApp nudge
-- Recent payments feed
-- Quick action buttons
+## Core features
 
-### Automation
+### Operations
 
-- Nightly lease expiry via Laravel scheduler
-- Monthly SMS rent reminders via Africa's Talking (3rd of every month, 9 AM)
-- Bulk mark-all-paid per property
-- Batch unit creation (pattern mode and manual mode)
-- Batch lease creation per property
+- Multi-property management under landlord accounts
+- Unit tracking for residential, commercial, and mixed portfolios
+- Lease creation, renewal, termination, and expiry handling
+- Transaction recording for rent, deposit, penalty, and refund flows
+- Printable receipts with generated reference codes
+
+### Dashboard and reporting
+
+- KPI cards for rent collected, arrears, and occupancy
+- Vacancy cost tracking
+- Priority arrears and payment reliability signals
+- Revenue and collection reports
+- Property performance comparisons
+- Expiring lease visibility
 
 ### Commercial support
 
-- Office, retail, warehouse, and studio unit types
-- Square footage pricing (rate per sqft × size)
-- Floor tracking, service charge, furnished flag
-- Escalation rate on leases for annual rent increases
-- Business name field for commercial tenants
+- Office, retail, warehouse, studio, and apartment unit types
+- Square-foot pricing support
+- Service charge, furnished flag, and floor tracking
+- Lease escalation rate and business-name fields
 
-### Reports
+### Automation
 
-- Monthly revenue bar chart (3/6/12 month periods)
-- Payment method breakdown with doughnut chart
-- Collection rate progress bar
-- Per-property revenue comparison
-- Top paying tenants ranking
-- Expiring leases (next 30 days)
-- Printable report view
-
-### Settings
-
-- Currency switcher (KES, USD, GBP, EUR) — applies globally
-- Date format preference
-- Compact dashboard mode
-- Demo SMS mode — logs to file instead of sending live
-- Sandbox reset — drops and reseeds demo data
+- Nightly lease expiry processing
+- Monthly SMS reminder scheduling
+- CI test automation
+- Automated database snapshot workflow to `backup/db-snapshots`
 
 ---
 
-## Getting started
-
-### Requirements
+## Requirements
 
 - PHP 8.4+
-- MySQL 8.0+
-- Node.js 20+
 - Composer 2+
+- Node.js 20+
+- MySQL 8.0+
+- MySQL client tools if you want to run local DB backup automation:
+  `mysqldump` or `mariadb-dump`
 
-### Installation
+---
+
+## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-username/estate-flow.git
 cd estate-flow
 
-# Install PHP dependencies
 composer install
-
-# Install Node dependencies
 npm install
 
-# Copy environment file
 cp .env.example .env
-
-# Generate application key
 php artisan key:generate
+```
 
-# Configure your database in .env
+Configure your database in `.env`:
+
+```env
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=estate_flow
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
+```
 
-# Run migrations and seed demo data
-php artisan migrate --seed
+Then initialize the app:
 
-# Build assets
+```bash
+php artisan migrate:fresh --seed
 npm run build
-
-# Start the development server
 php artisan serve
 ```
 
-Visit `http://localhost:8000` and log in with:
+Default demo login:
 
-| Field    | Value                  |
-| -------- | ---------------------- |
-| Email    | `ian@estateflow.co.ke` |
-| Password | `password`             |
+| Field | Value |
+| --- | --- |
+| Email | `ian@estateflow.co.ke` |
+| Password | `password` |
+
+Seed data may include additional landlord accounts for ownership and scoping realism, but all system users remain landlord-role users.
 
 ---
 
 ## Africa's Talking SMS setup
 
-1. Sign up at [account.africastalking.com](https://account.africastalking.com)
-2. Get your sandbox API key
-3. Add to `.env`:
+Add these to `.env`:
 
 ```env
 AT_USERNAME=sandbox
 AT_API_KEY=your_api_key_here
 ```
 
-4. In Settings, enable **Demo SMS mode** to log messages to file during development without consuming credits.
-5. For production, set `AT_USERNAME` to your live username and disable demo mode.
+Use Demo SMS mode in Settings during development to avoid sending live SMS.
 
 ---
 
-## Running the scheduler locally
+## Local scheduler usage
 
-Laravel's scheduler needs to run continuously to trigger automated reminders and lease expiry.
+Run the scheduler continuously:
 
 ```bash
 php artisan schedule:work
 ```
 
-Or manually trigger individual commands:
+Or trigger automation manually:
 
 ```bash
-# Expire overdue leases
 php artisan leases:expire-overdue
-
-# Send rent reminders
 php artisan reminders:send-rent
+php artisan schedule:run -vvv
+```
+
+You can inspect the registered schedule with:
+
+```bash
+php artisan schedule:list
 ```
 
 ---
 
-## Git branch strategy
+## GitHub Actions automation
 
-main ← stable, production-ready snapshots only
-develop ← integration branch, all features merged here first
-feature/_ ← one branch per feature
-hotfix/_ ← urgent fixes branched off main
-backup/db-snapshots ← automated DB dumps
+The repository now includes these workflows:
+
+- `CI`
+  builds frontend assets and runs the full test suite with SQLite
+- `Backup Database Snapshots`
+  creates a MySQL dump and publishes it to the `backup/db-snapshots` branch
+- `Run Scheduler Automation`
+  runs Laravel scheduler automation on a schedule or by manual dispatch
+
+### Required GitHub secrets
+
+Add these repository secrets for backup and scheduler jobs:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=estate_flow
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+AT_USERNAME=sandbox
+AT_API_KEY=your_api_key_here
+```
+
+### Local automation simulation
+
+Safe local simulations:
+
+```bash
+php artisan test
+php artisan schedule:list
+php artisan schedule:run -vvv
+powershell -ExecutionPolicy Bypass -File scripts/Invoke-DbBackup.ps1
+```
+
+Notes:
+
+- local DB snapshot simulation requires `mysqldump` or `mariadb-dump` on `PATH`
+- local snapshots are written to `database/db-backups/`
+- automated restore has been intentionally removed for safety
 
 ---
 
-## Environment variables reference
+## Branch strategy
+
+- `main`: stable snapshots
+- `develop`: integration branch
+- `feature/*`: feature work
+- `hotfix/*`: urgent fixes
+- `backup/db-snapshots`: automated database dumps
+
+---
+
+## Environment reference
 
 ```env
 APP_NAME=EstateFlow
@@ -193,24 +233,21 @@ DB_USERNAME=root
 DB_PASSWORD=
 
 SESSION_DRIVER=database
-
 QUEUE_CONNECTION=sync
 
 AT_USERNAME=sandbox
 AT_API_KEY=your_africastalking_api_key
-
-REGISTRATION_OPEN=true
 ```
 
 ---
 
-## Running tests
+## Testing
 
 ```bash
 php artisan test
 ```
 
-Or with coverage:
+Coverage:
 
 ```bash
 php artisan test --coverage
@@ -220,33 +257,41 @@ php artisan test --coverage
 
 ## Seed data
 
-The seeder creates a realistic Kenyan demo dataset:
+The seeding strategy is now intended for realistic stress testing rather than a tiny static demo.
 
-- **3 properties** — Sunshine Apartments (Westlands), Azure Heights (Kilimani), Riverside Plaza (Riverside Drive)
-- **15 units** across the three properties
-- **10 tenants** with Kenyan names and +254 phone numbers
-- **10 active leases** with varying start dates
-- **Transactions** — most tenants have paid, John Ndegwa, Sarah Otieno, and Moses Kamau are intentionally in arrears to populate the dashboard priority list
+It includes:
+
+- a primary landlord demo login
+- large and variable residential, commercial, and mixed portfolios
+- active, expired, terminated, and open-ended leases
+- occupied, vacant, and maintenance units
+- rent, deposit, penalty, and refund transactions
+- arrears, partial payments, and refund scenarios
+
+Refresh the seeded dataset with:
+
+```bash
+php artisan migrate:fresh --seed
+```
 
 ---
 
 ## Roadmap
 
-- [ ] M-Pesa Daraja STK Push (requires public server URL)
-- [ ] Flutterwave payment gateway
-- [ ] CSV import for bulk tenant migration from Excel
-- [ ] Per-property detailed report PDF export
-- [ ] Tenant portal (read-only view of lease and payment history)
-- [ ] Two-factor authentication
-- [ ] Docker containerisation
-- [ ] Multi-landlord / agency mode
+- M-Pesa Daraja STK Push
+- Flutterwave payment gateway
+- CSV import for tenant migration
+- richer PDF/export flows
+- tenant-facing read-only portal
+- two-factor authentication
+- Docker support
 
 ---
 
 ## License
 
-Private project — not licensed for redistribution.
+Private project. Not licensed for redistribution.
 
 ---
 
-Built by Ian Bigingi · Nairobi, Kenya
+Built by Ian Bigingi, Nairobi, Kenya.
