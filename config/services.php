@@ -40,4 +40,8 @@ return [
         'api_key'  => env('AFRICASTALKING_API_KEY'),
     ],
 
+    'exchangerates' => [
+        'key' => env('EXCHANGERATES_API_KEY'),
+    ],
+
 ];
