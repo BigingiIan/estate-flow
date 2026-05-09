@@ -2,7 +2,10 @@
 
 use App\Models\Lease;
 use App\Models\Property;
-use function Livewire\Volt\{state, computed};
+use function Livewire\Volt\{state, computed, uses};
+use Livewire\WithPagination;
+
+uses(WithPagination::class);
 
 state(['search' => '', 'status' => 'active']);
 
@@ -16,7 +19,7 @@ $leases = computed(function () {
         ->when($this->search, fn($q) => $q->whereHas('tenant', fn($q) =>
             $q->where('full_name', 'like', "%{$this->search}%")))
         ->latest()
-        ->get();
+        ->paginate(15);
 });
 
 ?>
@@ -142,5 +145,12 @@ $leases = computed(function () {
         </div>
         @endforelse
     </div>
+
+    {{-- Pagination --}}
+    @if($this->leases->hasPages())
+    <div class="px-6 py-4 mt-4" style="border-top: 1px solid #EFF4F7;">
+        {{ $this->leases->links() }}
+    </div>
+    @endif
 
 </div>
