@@ -76,7 +76,7 @@ $summary = computed(function () {
                 Collected this month
             </p>
             <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
-                KES {{ number_format($this->summary['total_this_month'], 0) }}
+                @money($this->summary['total_this_month'])
             </p>
         </div>
         <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
@@ -156,13 +156,17 @@ $summary = computed(function () {
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Amount</p>
                     <p class="font-manrope text-sm font-bold mt-1" style="color:#283439;">
-                        KES {{ number_format($txn->amount, 0) }}
+                        @money($txn->amount)
                     </p>
                 </div>
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Date</p>
                     <p class="font-inter text-sm mt-1" style="color:#283439;">
-                        {{ $txn->paid_at ? \Carbon\Carbon::parse($txn->paid_at)->format('d M Y') : '—' }}
+                        @if($txn->paid_at)
+                            @appdate($txn->paid_at)
+                        @else
+                            â€”
+                        @endif
                     </p>
                 </div>
                 <div class="text-center">

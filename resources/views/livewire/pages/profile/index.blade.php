@@ -175,7 +175,7 @@ $updatePassword = function () {
         </form>
         @else
         <p class="font-inter text-sm" style="color:#9BABB3;">
-            Last updated: {{ Auth::user()->updated_at->format('d M Y') }}
+            Last updated: @appdate(Auth::user()->updated_at)
         </p>
         @endif
     </div>

@@ -84,7 +84,7 @@ mount(function (Property $property) {
                 <div class="flex justify-between">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Base Rent</p>
                     <p class="font-manrope text-sm font-semibold" style="color:#283439;">
-                        KES {{ number_format($unit->base_rent, 0) }}
+                        @money($unit->base_rent)
                     </p>
                 </div>
                 <div class="flex justify-between">
@@ -99,7 +99,7 @@ mount(function (Property $property) {
                 <div class="flex justify-between">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Lease Ends</p>
                     <p class="font-inter text-sm" style="color:#283439;">
-                        {{ \Carbon\Carbon::parse($activeLease->end_date)->format('d M Y') }}
+                        @appdate($activeLease->end_date)
                     </p>
                 </div>
                 @endif

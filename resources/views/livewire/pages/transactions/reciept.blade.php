@@ -60,7 +60,7 @@ mount(function (Transaction $transaction) {
                 Amount Paid
             </p>
             <p class="font-manrope font-bold" style="font-size:3rem; color:#283439; line-height:1;">
-                KES {{ number_format($transaction->amount, 0) }}
+                @money($transaction->amount)
             </p>
         </div>
 

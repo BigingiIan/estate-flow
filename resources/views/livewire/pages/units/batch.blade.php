@@ -255,7 +255,7 @@ $saveBatch = function (UnitService $unitService) {
         <div class="grid grid-cols-4 px-6 py-3 font-inter text-sm"
             style="color:#283439; border-bottom: 0.5px solid #F7FAFC;">
             <p>{{ $row['unit_number'] }}</p>
-            <p>KES {{ number_format($row['base_rent'], 0) }}</p>
+            <p>@money($row['base_rent'])</p>
             <p>{{ $row['bedrooms'] }}</p>
             <p>{{ $row['bathrooms'] }}</p>
         </div>

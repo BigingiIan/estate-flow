@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Artisan;
 use function Livewire\Volt\{state, mount};
 
 state([
-    'show_sandbox_banner' => true,
+    'show_sandbox_banner' => false,
     'compact_dashboard'   => false,
     'demo_sms_mode'       => true,
     'currency'            => 'KES',
@@ -22,16 +22,22 @@ mount(function () {
     $this->date_format         = $prefs['date_format']         ?? 'd M Y';
 });
 
-$saveSettings = function () {
-    session(['estateflow_prefs' => [
+$saveSettings = function (){
+    $prefs = [
         'show_sandbox_banner' => $this->show_sandbox_banner,
         'compact_dashboard'   => $this->compact_dashboard,
         'demo_sms_mode'       => $this->demo_sms_mode,
         'currency'            => $this->currency,
         'date_format'         => $this->date_format,
-    ]]);
+    ];
+
+    session(['estateflow_prefs' => $prefs]);
+
+    foreach ($prefs as $key => $value) {
+        session(["estateflow_prefs.{$key}" => $value]);
+    }
+
     $this->saved = true;
-    $this->dispatch('settings-saved');
 };
 
 $runReminders = function () {
@@ -142,7 +148,7 @@ $resetSandbox = function () {
                         class="w-full border-0 border-b py-2 font-inter text-sm bg-transparent
                             focus:outline-none focus:ring-0"
                         style="border-color:#E7EFF3; color:#283439;">
-                        <option value="d M Y">{{ now()->format('d M Y') }}</option>
+                        <option value="d M Y">@appdate(now())</option>
                         <option value="d/m/Y">{{ now()->format('d/m/Y') }}</option>
                         <option value="Y-m-d">{{ now()->format('Y-m-d') }}</option>
                         <option value="M d, Y">{{ now()->format('M d, Y') }}</option>
@@ -174,6 +180,19 @@ $resetSandbox = function () {
                             style="transform: translateX({{ $demo_sms_mode ? '18px' : '2px' }});">
                         </span>
                     </button>
+                </div>
+
+                {{-- Currency preview --}}
+                <div class="flex items-start justify-between mb-5">
+                    <p class="font-inter text-xs mt-2" style="color:#9BABB3;">
+                        Preview: KES 35,000 =
+                        @php
+                            $rates = ['KES' => 1.0, 'USD' => 0.0077, 'GBP' => 0.0061, 'EUR' => 0.0071];
+                            $rate  = $rates[$currency] ?? 1.0;
+                            $converted = 35000 * $rate;
+                    @endphp
+                    {{ $currency }} {{ number_format($converted, $currency === 'KES' ? 0 : 2) }}
+                    </p>
                 </div>
 
                 {{-- Save button --}}

@@ -85,7 +85,7 @@ $properties = computed(function () {
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Base Rent</p>
                     <p class="font-manrope text-sm font-bold mt-1" style="color:#283439;">
-                        KES {{ number_format($unit->base_rent, 0) }}
+                        @money($unit->base_rent)
                     </p>
                 </div>
                 @if($activeLease)

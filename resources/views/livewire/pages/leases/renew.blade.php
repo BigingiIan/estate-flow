@@ -75,7 +75,7 @@ $renew = function () {
                     style="border-color:#E7EFF3; color:#283439;" />
                 @error('rent_amount') <p class="font-inter text-xs mt-1" style="color:#9F403D;">{{ $message }}</p> @enderror
                 <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                    Current rate: KES {{ number_format($lease->rent_amount, 0) }}/mo
+                    Current rate: @money($lease->rent_amount)/mo
                 </p>
             </div>
 

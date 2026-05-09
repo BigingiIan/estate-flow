@@ -119,7 +119,7 @@ $save = function (LeaseService $leaseService) {
                     </option>
                     @foreach($this->vacantUnits as $unit)
                         <option value="{{ $unit->id }}">
-                            Unit {{ $unit->unit_number }} — KES {{ number_format($unit->base_rent, 0) }}
+                            Unit {{ $unit->unit_number }} — @money($unit->base_rent)
                             ({{ $unit->bedrooms }}bd/{{ $unit->bathrooms }}ba)
                         </option>
                     @endforeach

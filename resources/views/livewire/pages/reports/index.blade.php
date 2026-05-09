@@ -238,7 +238,7 @@ $reportData = computed(function () {
                     Total Revenue
                 </p>
                 <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
-                    KES {{ number_format($this->reportData['totalRevenue'], 0) }}
+                    @money($this->reportData['totalRevenue'])
                 </p>
                 <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
                     Last {{ $period }} months
@@ -294,7 +294,7 @@ $reportData = computed(function () {
                         </p>
                     </div>
                     <p class="font-manrope text-lg font-bold" style="color:#283439;">
-                        KES {{ number_format($this->reportData['totalRevenue'], 0) }}
+                        @money($this->reportData['totalRevenue'])
                     </p>
                 </div>
                 <div style="position:relative; height:200px;">
@@ -319,10 +319,10 @@ $reportData = computed(function () {
                     </div>
                     <div class="flex justify-between mt-2">
                         <p class="font-inter text-xs" style="color:#9BABB3;">
-                            KES {{ number_format($this->reportData['collectedRent'], 0) }} collected
+                            @money($this->reportData['collectedRent']) collected
                         </p>
                         <p class="font-inter text-xs" style="color:#9BABB3;">
-                            of KES {{ number_format($this->reportData['expectedRent'], 0) }}
+                            of @money($this->reportData['expectedRent'])
                         </p>
                     </div>
                 </div>
@@ -377,7 +377,7 @@ $reportData = computed(function () {
                         </div>
                     </div>
                     <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                        KES {{ number_format($method['total'], 0) }}
+                        @money($method['total'])
                     </p>
                 </div>
                 @empty
@@ -411,7 +411,7 @@ $reportData = computed(function () {
                                 {{ $type['count'] }} txn{{ $type['count'] > 1 ? 's' : '' }}
                             </p>
                             <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                                KES {{ number_format($type['total'], 0) }}
+                                @money($type['total'])
                             </p>
                         </div>
                     </div>
@@ -453,7 +453,7 @@ $reportData = computed(function () {
                             </div>
                         </div>
                         <p class="font-inter text-xs" style="color:#9BABB3;">
-                            Avg rent: KES {{ number_format($b['avg_rent'], 0) }}
+                            Avg rent: @money($b['avg_rent'])
                         </p>
                     </div>
                     @endforeach
@@ -475,7 +475,7 @@ $reportData = computed(function () {
                             <p class="font-manrope text-xl font-bold" style="color:#283439;">{{ $b['count'] }}</p>
                             <p class="font-inter text-xs" style="color:#9BABB3;">{{ $b['bathrooms'] }} Bath</p>
                             <p class="font-inter text-xs mt-1" style="color:#585E6C;">
-                                KES {{ number_format($b['avg_rent'], 0) }}
+                                @money($b['avg_rent'])
                             </p>
                         </div>
                         @endforeach
@@ -532,7 +532,7 @@ $reportData = computed(function () {
                 onmouseleave="this.style.backgroundColor='transparent'">
                 <div class="grid grid-cols-5 items-center mb-2">
                     <div class="col-span-2"><p class="font-inter text-sm font-medium" style="color:#283439;">{{ $prop['name'] }}</p></div>
-                    <p class="font-manrope text-sm font-bold" style="color:#283439;">KES {{ number_format($prop['revenue'], 0) }}</p>
+                    <p class="font-manrope text-sm font-bold" style="color:#283439;">@money($prop['revenue'])</p>
                     <p class="font-inter text-sm" style="color:#283439;">{{ $prop['occupancy_rate'] }}%</p>
                     <p class="font-inter text-sm" style="color:#9BABB3;">{{ $prop['occupied'] }}/{{ $prop['units'] }}</p>
                 </div>
@@ -571,7 +571,7 @@ $reportData = computed(function () {
                             <p class="font-inter text-xs" style="color:#9BABB3;">{{ $tenant['count'] }} payment(s)</p>
                         </div>
                     </div>
-                    <p class="font-manrope text-sm font-bold" style="color:#283439;">KES {{ number_format($tenant['total'], 0) }}</p>
+                    <p class="font-manrope text-sm font-bold" style="color:#283439;">@money($tenant['total'])</p>
                 </div>
                 @empty
                 <div class="px-6 py-8 text-center"><p class="font-inter text-sm" style="color:#9BABB3;">No payment data yet.</p></div>

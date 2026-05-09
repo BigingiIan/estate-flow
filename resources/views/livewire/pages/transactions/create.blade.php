@@ -97,7 +97,7 @@ $save = function (TransactionService $transactionService) {
                     @foreach($this->leases as $lease)
                         <option value="{{ $lease->id }}">
                             {{ $lease->tenant->full_name }} — Unit {{ $lease->unit->unit_number }}
-                            (KES {{ number_format($lease->rent_amount, 0) }}/mo)
+                            (@money($lease->rent_amount)/mo)
                         </option>
                     @endforeach
                 </select>

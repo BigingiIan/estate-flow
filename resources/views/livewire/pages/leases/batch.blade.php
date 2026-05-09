@@ -198,7 +198,7 @@ $saveBatch = function (LeaseService $leaseService) {
                     Unit {{ $row['unit_number'] }}
                 </p>
                 <p class="font-inter text-xs" style="color:#9BABB3;">
-                    KES {{ number_format($row['base_rent'], 0) }}/mo
+                    @money($row['base_rent'])/mo
                 </p>
             </div>
             <div class="col-span-2">

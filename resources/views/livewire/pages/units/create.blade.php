@@ -215,9 +215,9 @@ $save = function (UnitService $unitService) {
                         <p class="font-inter text-xs" style="color:#585E6C;">
                             Calculated base rent:
                             <span class="font-manrope font-bold">
-                                KES {{ number_format($size_sqft * $rate_per_sqft, 0) }}/month
+                                @money($size_sqft * $rate_per_sqft)/month
                             </span>
-                            ({{ number_format($size_sqft, 0) }} sqft × KES {{ number_format($rate_per_sqft, 0) }}/sqft)
+                            ({{ number_format($size_sqft, 0) }} sqft × @money($rate_per_sqft)/sqft)
                         </p>
                     </div>
                 @endif

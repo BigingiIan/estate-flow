@@ -1,10 +1,14 @@
-@php use Illuminate\Support\Str; @endphp
+@php
+    use Illuminate\Support\Str;
+
+    $prefs = session('estateflow_prefs', []);
+    $compact = $prefs['compact_dashboard'] ?? false;
+@endphp
 
 <x-app-layout>
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 {{ $compact ? 'py-6' : 'py-10' }}">
 
     {{-- Sandbox banner --}}
-    @php $prefs = session('estateflow_prefs', []); @endphp
     @if($prefs['show_sandbox_banner'] ?? true)
     <div class="mb-6 px-4 py-3 rounded-md font-inter text-xs font-medium flex items-center justify-between"
         style="background-color:#FEF3C7; color:#92400E;">
@@ -37,8 +41,9 @@
                         d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                 </svg>
             </div>
-            <p class="font-manrope mt-3 font-bold" style="font-size:2rem; color:#22863a;">
-                KES {{ number_format($monthlyCollected, 0) }}
+            <p class="font-manrope mt-3 font-bold"
+                style="font-size: {{ $compact ? '1.5rem' : '2rem' }}; color:#22863a;">
+                @money($monthlyCollected)
             </p>
             <div class="mt-3 rounded-full overflow-hidden" style="background-color:#EFF4F7; height:4px;">
                 @php $collectionPct = $pendingArrears > 0 ? min(100, round(($monthlyCollected / ($monthlyCollected + $pendingArrears)) * 100)) : 100; @endphp
@@ -59,8 +64,9 @@
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
             </div>
-            <p class="font-manrope mt-3 font-bold" style="font-size:2rem; color:#9F403D;">
-                KES {{ number_format($pendingArrears, 0) }}
+            <p class="font-manrope mt-3 font-bold"
+                style="font-size: {{ $compact ? '1.5rem' : '2rem' }}; color:#9F403D;">
+                @money($pendingArrears)
             </p>
             <p class="font-inter text-xs mt-2" style="color:#9BABB3;">
                 {{ $priorityArrears->count() }} tenant{{ $priorityArrears->count() !== 1 ? 's' : '' }} overdue
@@ -77,7 +83,8 @@
                         d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
                 </svg>
             </div>
-            <p class="font-manrope mt-3 font-bold" style="font-size:2rem; color:#283439;">
+            <p class="font-manrope mt-3 font-bold"
+                style="font-size: {{ $compact ? '1.5rem' : '2rem' }}; color:#283439;">
                 {{ $occupancyRate }}%
             </p>
             <div class="mt-3 rounded-full overflow-hidden" style="background-color:#EFF4F7; height:4px;">
@@ -107,11 +114,11 @@
             </div>
             <div>
                 <p class="font-inter text-sm font-semibold" style="color:#9F403D;">
-                    Vacancy is costing you KES {{ number_format($vacancyCost, 0) }}/day
+                    Vacancy is costing you @money($vacancyCost)/day
                 </p>
                 <p class="font-inter text-xs mt-0.5" style="color:#9F403D; opacity:0.8;">
                     {{ $vacantCount }} vacant unit{{ $vacantCount !== 1 ? 's' : '' }} ·
-                    KES {{ number_format($vacancyCost * 30, 0) }} lost this month if unfilled
+                    @money($vacancyCost * 30) lost this month if unfilled
                 </p>
             </div>
         </div>
@@ -188,7 +195,7 @@
             <div class="flex items-center gap-6">
                 <div class="text-right">
                     <p class="font-manrope text-sm font-bold" style="color:#9F403D;">
-                        KES {{ number_format($arrear['amount'], 0) }}
+                        @money($arrear['amount'])
                     </p>
                     <p class="font-inter text-xs" style="color:#9BABB3;">
                         {{ $arrear['days_overdue'] }} {{ Str::plural('day', $arrear['days_overdue']) }} overdue
@@ -263,7 +270,7 @@
             </div>
             <div class="text-right">
                 <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                    KES {{ number_format($txn['amount'], 0) }}
+                    @money($txn['amount'])
                 </p>
                 <p class="font-inter text-xs" style="color:#9BABB3;">{{ $txn['date'] }}</p>
             </div>

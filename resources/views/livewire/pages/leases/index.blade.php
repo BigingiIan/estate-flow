@@ -85,13 +85,17 @@ $leases = computed(function () {
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Rent</p>
                     <p class="font-manrope text-sm font-bold mt-1" style="color:#283439;">
-                        KES {{ number_format($lease->rent_amount, 0) }}
+                        @money($lease->rent_amount)
                     </p>
                 </div>
                 <div class="text-center">
                     <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">End Date</p>
                     <p class="font-inter text-sm mt-1" style="color:#283439;">
-                        {{ $lease->end_date ? \Carbon\Carbon::parse($lease->end_date)->format('d M Y') : 'Open' }}
+                        @if($lease->end_date)
+                            @appdate($lease->end_date)
+                        @else
+                            Open
+                        @endif
                     </p>
                 </div>
                 <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full"

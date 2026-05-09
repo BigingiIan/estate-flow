@@ -82,7 +82,7 @@ $leaseHistory = computed(function () {
                     <div>
                         <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Tenant Since</p>
                         <p class="font-inter text-sm mt-0.5" style="color:#283439;">
-                            {{ $tenant->created_at->format('d M Y') }}
+                            @appdate($tenant->created_at)
                         </p>
                     </div>
                 </div>
@@ -111,17 +111,19 @@ $leaseHistory = computed(function () {
                     <div>
                         <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Monthly Rent</p>
                         <p class="font-manrope text-sm font-bold mt-0.5" style="color:#283439;">
-                            KES {{ number_format($activeLease->rent_amount, 0) }}
+                            @money($activeLease->rent_amount)
                         </p>
                     </div>
                     <div>
                         <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Lease Period</p>
                         <p class="font-inter text-sm mt-0.5" style="color:#283439;">
-                            {{ \Carbon\Carbon::parse($activeLease->start_date)->format('d M Y') }}
+                            @appdate($activeLease->start_date)
                             —
-                            {{ $activeLease->end_date
-                                ? \Carbon\Carbon::parse($activeLease->end_date)->format('d M Y')
-                                : 'Open-ended' }}
+                            @if($activeLease->end_date)
+                                @appdate($activeLease->end_date)
+                            @else
+                                Open-ended
+                            @endif
                         </p>
                     </div>
                     <div class="flex gap-2 pt-2">
@@ -180,10 +182,14 @@ $leaseHistory = computed(function () {
                     <div class="flex items-center gap-4">
                         <div class="text-right">
                             <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                                KES {{ number_format($txn->amount, 0) }}
+                                @money($txn->amount)
                             </p>
                             <p class="font-inter text-xs" style="color:#9BABB3;">
-                                {{ $txn->paid_at ? \Carbon\Carbon::parse($txn->paid_at)->format('d M Y') : '—' }}
+                                @if($txn->paid_at)
+                                    @appdate($txn->paid_at)
+                                @else
+                                    â€”
+                                @endif
                             </p>
                         </div>
                         <a href="{{ route('transactions.receipt', $txn) }}" wire:navigate
@@ -213,16 +219,18 @@ $leaseHistory = computed(function () {
                             {{ $lease->unit->property->name }} — Unit {{ $lease->unit->unit_number }}
                         </p>
                         <p class="font-inter text-xs mt-0.5" style="color:#9BABB3;">
-                            {{ \Carbon\Carbon::parse($lease->start_date)->format('d M Y') }}
+                            @appdate($lease->start_date)
                             —
-                            {{ $lease->end_date
-                                ? \Carbon\Carbon::parse($lease->end_date)->format('d M Y')
-                                : 'Open-ended' }}
+                            @if($lease->end_date)
+                                @appdate($lease->end_date)
+                            @else
+                                Open-ended
+                            @endif
                         </p>
                     </div>
                     <div class="flex items-center gap-3">
                         <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                            KES {{ number_format($lease->rent_amount, 0) }}/mo
+                            @money($lease->rent_amount)/mo
                         </p>
                         <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full"
                             style="background-color: {{ $lease->status === 'active' ? '#E7EFF3' : '#EFF4F7' }};
