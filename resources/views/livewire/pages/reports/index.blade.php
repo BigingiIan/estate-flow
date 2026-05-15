@@ -1,689 +1,1164 @@
 <?php
 
-use App\Models\Property;
-use App\Models\Unit;
 use App\Models\Lease;
+use App\Models\Property;
 use App\Models\Transaction;
+use App\Models\Unit;
 use Illuminate\Support\Facades\Auth;
-use function Livewire\Volt\{state, computed};
+use function Livewire\Volt\{computed, state};
 
-state(['period' => '6']);
+state([
+    'period'       => '6',
+    'basis'        => 'cash',      // cash | accrual
+    'show_vacant'  => false,       // drill-down toggle
+]);
 
 $reportData = computed(function () {
     $userId      = Auth::id();
+    $months      = in_array((int) $this->period, [3, 6, 12], true) ? (int) $this->period : 6;
+    $periodStart = now()->startOfMonth()->subMonths($months - 1);
+    $periodEnd   = now()->endOfMonth();
+    $previousStart = $periodStart->copy()->subMonths($months);
+    $previousEnd   = $periodStart->copy()->subDay()->endOfDay();
+    $currentMonthStart = now()->startOfMonth();
+    $currentMonthEnd   = now()->endOfMonth();
+
     $propertyIds = Property::where('user_id', $userId)->pluck('id');
     $unitIds     = Unit::whereIn('property_id', $propertyIds)->pluck('id');
     $leaseIds    = Lease::whereIn('unit_id', $unitIds)->pluck('id');
-    $months      = (int) $this->period;
+    $activeLeases = Lease::whereIn('unit_id', $unitIds)
+        ->where('status', 'active')
+        ->with(['tenant', 'unit.property'])
+        ->get();
 
-    // --- Monthly revenue ---
+    $rentInPeriod = fn($query) => $query
+        ->where('type', 'rent')
+        ->whereBetween('paid_at', [$periodStart, $periodEnd]);
+
+    // --- Monthly revenue (cash basis) ---
     $monthlyData  = [];
-    $totalRevenue = 0;
+    $totalRevenue = 0.0;
     for ($i = $months - 1; $i >= 0; $i--) {
-        $date      = now()->subMonths($i);
-        $collected = Transaction::whereIn('lease_id', $leaseIds)
+        $month  = now()->startOfMonth()->subMonths($i);
+        $amount = Transaction::whereIn('lease_id', $leaseIds)
             ->where('type', 'rent')
-            ->whereMonth('paid_at', $date->month)
-            ->whereYear('paid_at', $date->year)
+            ->whereBetween('paid_at', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()])
             ->sum('amount');
-        $monthlyData[] = ['month' => $date->format('M Y'), 'amount' => (float) $collected];
-        $totalRevenue += $collected;
+        $monthlyData[] = [
+            'month'  => $month->format('M Y'),
+            'amount' => (float) $amount,
+        ];
+        $totalRevenue += (float) $amount;
     }
 
-    // --- Occupancy ---
-    $totalUnits    = Unit::whereIn('property_id', $propertyIds)->count();
-    $occupiedUnits = Unit::whereIn('property_id', $propertyIds)->where('status', 'occupied')->count();
-    $occupancyRate = $totalUnits > 0 ? round(($occupiedUnits / $totalUnits) * 100, 1) : 0;
+    // Accrual basis — expected rent per month
+    $monthlyDataAccrual = [];
+    $totalRevenueAccrual = 0.0;
+    for ($i = $months - 1; $i >= 0; $i--) {
+        $month    = now()->startOfMonth()->subMonths($i);
+        $expected = (float) Lease::whereIn('unit_id', $unitIds)
+            ->where('status', 'active')
+            ->orWhere(function ($q) use ($month) {
+                $q->whereIn('status', ['terminated', 'expired'])
+                    ->where('end_date', '>=', $month->copy()->startOfMonth());
+            })
+            ->sum('rent_amount');
+        $monthlyDataAccrual[] = [
+            'month'  => $month->format('M Y'),
+            'amount' => $expected,
+        ];
+        $totalRevenueAccrual += $expected;
+    }
 
-    // --- Collection rate ---
-    $expectedRent = Lease::whereIn('unit_id', $unitIds)
-        ->where('status', 'active')
-        ->sum('rent_amount');
-    $collectedRent = Transaction::whereIn('lease_id', $leaseIds)
+    $previousRevenue = Transaction::whereIn('lease_id', $leaseIds)
         ->where('type', 'rent')
-        ->whereMonth('paid_at', now()->month)
-        ->whereYear('paid_at', now()->year)
+        ->whereBetween('paid_at', [$previousStart, $previousEnd])
         ->sum('amount');
-    $collectionRate = $expectedRent > 0
-        ? round(($collectedRent / $expectedRent) * 100, 1)
-        : 0;
 
-    // --- Payment methods ---
-    $paymentMethods = Transaction::whereIn('lease_id', $leaseIds)
+    $revenueChangePct = $previousRevenue > 0
+        ? round((($totalRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
+        : null;
+
+    $expectedRent  = (float) $activeLeases->sum('rent_amount');
+    $collectedRent = (float) Transaction::whereIn('lease_id', $activeLeases->pluck('id'))
         ->where('type', 'rent')
+        ->whereBetween('paid_at', [$currentMonthStart, $currentMonthEnd])
+        ->sum('amount');
+
+    $collectionRate = $expectedRent > 0
+        ? round(($collectedRent / $expectedRent) * 100, 1) : 0;
+
+    // Previous month collection rate for comparison
+    $prevMonthStart = now()->subMonth()->startOfMonth();
+    $prevMonthEnd   = now()->subMonth()->endOfMonth();
+    $prevCollected  = (float) Transaction::whereIn('lease_id', $activeLeases->pluck('id'))
+        ->where('type', 'rent')
+        ->whereBetween('paid_at', [$prevMonthStart, $prevMonthEnd])
+        ->sum('amount');
+    $prevCollectionRate = $expectedRent > 0
+        ? round(($prevCollected / $expectedRent) * 100, 1) : 0;
+    $collectionRateChange = $collectionRate - $prevCollectionRate;
+
+    $arrears = $activeLeases->map(function ($lease) use ($currentMonthStart, $currentMonthEnd) {
+        $paid = (float) $lease->transactions()
+            ->where('type', 'rent')
+            ->whereBetween('paid_at', [$currentMonthStart, $currentMonthEnd])
+            ->sum('amount');
+        return [
+            'lease'  => $lease,
+            'amount' => max(0, (float) $lease->rent_amount - $paid),
+        ];
+    })->filter(fn($row) => $row['amount'] > 0)->values();
+
+    $arrearsAmount = (float) $arrears->sum('amount');
+    $arrearsCount  = $arrears->count();
+
+    $totalUnits       = Unit::whereIn('property_id', $propertyIds)->count();
+    $occupiedUnits    = Unit::whereIn('property_id', $propertyIds)->where('status', 'occupied')->count();
+    $vacantUnits      = Unit::whereIn('property_id', $propertyIds)->where('status', 'vacant')->count();
+    $maintenanceUnits = Unit::whereIn('property_id', $propertyIds)->where('status', 'maintenance')->count();
+    $occupancyRate    = $totalUnits > 0 ? round(($occupiedUnits / $totalUnits) * 100, 1) : 0;
+    $vacancyCost      = (float) Unit::whereIn('property_id', $propertyIds)
+        ->where('status', 'vacant')->sum('base_rent');
+
+    // Vacant units detail for drill-down
+    $vacantUnitsList = Unit::whereIn('property_id', $propertyIds)
+        ->where('status', 'vacant')
+        ->with('property')
+        ->get();
+
+    // Payment heatmap — count payments by day of month
+    $heatmap = Transaction::whereIn('lease_id', $leaseIds)
+        ->where('type', 'rent')
+        ->whereBetween('paid_at', [$periodStart, $periodEnd])
+        ->whereNotNull('paid_at')
+        ->get()
+        ->groupBy(fn($t) => (int) \Carbon\Carbon::parse($t->paid_at)->format('j'))
+        ->map(fn($group) => $group->count())
+        ->toArray();
+
+    $maxHeatmapCount = max(1, max($heatmap ?: [1]));
+
+    $paymentMethods = Transaction::whereIn('lease_id', $leaseIds)
+        ->tap($rentInPeriod)
         ->whereNotNull('payment_method')
         ->selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
         ->groupBy('payment_method')
         ->orderByDesc('total')
         ->get()
-        ->map(fn($r) => [
-            'method' => ucfirst(str_replace('_', ' ', $r->payment_method)),
-            'count'  => $r->count,
-            'total'  => (float) $r->total,
+        ->map(fn($row) => [
+            'method' => ucfirst(str_replace('_', ' ', $row->payment_method)),
+            'count'  => (int) $row->count,
+            'total'  => (float) $row->total,
         ]);
 
-    // --- Transaction types ---
     $typeBreakdown = Transaction::whereIn('lease_id', $leaseIds)
+        ->whereBetween('paid_at', [$periodStart, $periodEnd])
         ->selectRaw('type, COUNT(*) as count, SUM(amount) as total')
         ->groupBy('type')
         ->orderByDesc('total')
         ->get()
-        ->map(fn($r) => [
-            'type'  => ucfirst($r->type),
-            'count' => $r->count,
-            'total' => (float) $r->total,
+        ->map(fn($row) => [
+            'type'  => ucfirst($row->type),
+            'count' => (int) $row->count,
+            'total' => (float) $row->total,
         ]);
 
-    // --- Per-property revenue ---
     $propertyRevenue = Property::where('user_id', $userId)
-        ->with('units.leases.transactions')
+        ->with(['units'])
         ->get()
-        ->map(function ($property) use ($months) {
-            $pLeaseIds = Lease::whereIn('unit_id', $property->units->pluck('id'))->pluck('id');
-            $revenue   = Transaction::whereIn('lease_id', $pLeaseIds)
+        ->map(function ($property) use ($periodStart, $periodEnd, $currentMonthStart, $currentMonthEnd) {
+            $pUnitIds  = $property->units->pluck('id');
+            $pLeaseIds = Lease::whereIn('unit_id', $pUnitIds)->pluck('id');
+            $revenue   = (float) Transaction::whereIn('lease_id', $pLeaseIds)
                 ->where('type', 'rent')
-                ->where('paid_at', '>=', now()->subMonths($months))
+                ->whereBetween('paid_at', [$periodStart, $periodEnd])
                 ->sum('amount');
-            $units     = $property->units->count();
-            $occupied  = $property->units->where('status', 'occupied')->count();
+            $expected  = (float) Lease::whereIn('unit_id', $pUnitIds)->where('status', 'active')->sum('rent_amount');
+            $collected = (float) Transaction::whereIn('lease_id', $pLeaseIds)
+                ->where('type', 'rent')
+                ->whereBetween('paid_at', [$currentMonthStart, $currentMonthEnd])
+                ->sum('amount');
+            $units    = $property->units->count();
+            $occupied = $property->units->where('status', 'occupied')->count();
             return [
-                'name'          => $property->name,
-                'revenue'       => (float) $revenue,
-                'units'         => $units,
-                'occupied'      => $occupied,
-                'occupancy_rate' => $units > 0 ? round(($occupied / $units) * 100) : 0,
+                'name'            => $property->name,
+                'revenue'         => $revenue,
+                'units'           => $units,
+                'occupied'        => $occupied,
+                'occupancy_rate'  => $units > 0 ? round(($occupied / $units) * 100, 1) : 0,
+                'collection_rate' => $expected > 0 ? round(($collected / $expected) * 100, 1) : 0,
             ];
         })
         ->sortByDesc('revenue')
         ->values();
 
-    // --- Average days to pay ---
+    $topTenants = Transaction::whereIn('lease_id', $leaseIds)
+        ->tap($rentInPeriod)
+        ->with('lease.tenant')
+        ->get()
+        ->groupBy('lease_id')
+        ->map(fn($payments) => [
+            'name'  => $payments->first()->lease->tenant->full_name,
+            'total' => (float) $payments->sum('amount'),
+            'count' => $payments->count(),
+        ])
+        ->sortByDesc('total')
+        ->take(6)
+        ->values();
+
     $avgDaysToPay = Transaction::whereIn('lease_id', $leaseIds)
-        ->where('type', 'rent')
+        ->tap($rentInPeriod)
         ->whereNotNull('paid_at')
         ->get()
         ->avg(fn($t) => \Carbon\Carbon::parse($t->paid_at)->day);
 
-    // --- Top tenants ---
-    $topTenants = Transaction::whereIn('lease_id', $leaseIds)
-        ->where('type', 'rent')
-        ->where('paid_at', '>=', now()->subMonths($months))
-        ->with('lease.tenant')
-        ->get()
-        ->groupBy('lease_id')
-        ->map(fn($txns) => [
-            'name'   => $txns->first()->lease->tenant->full_name,
-            'total'  => $txns->sum('amount'),
-            'count'  => $txns->count(),
-        ])
-        ->sortByDesc('total')
-        ->take(5)
-        ->values();
-
-    // --- Arrears count ---
-    $arrearsCount = Lease::whereIn('unit_id', $unitIds)
-        ->where('status', 'active')
-        ->get()
-        ->filter(function ($lease) {
-            return !$lease->transactions()
-                ->where('type', 'rent')
-                ->whereMonth('paid_at', now()->month)
-                ->whereYear('paid_at', now()->year)
-                ->exists();
-        })->count();
-
-    // --- Expiring leases ---
     $expiringLeases = Lease::whereIn('unit_id', $unitIds)
         ->where('status', 'active')
         ->whereNotNull('end_date')
-        ->whereBetween('end_date', [now(), now()->addDays(30)])
+        ->whereBetween('end_date', [now(), now()->addDays(60)])
         ->with(['tenant', 'unit.property'])
         ->orderBy('end_date')
+        ->take(8)
         ->get();
 
-    // ---------- NEW ANALYTICS ----------
-    // 1. Popular unit sizes by bedrooms
-    $bedroomStats = Unit::whereIn('property_id', $propertyIds)
-        ->selectRaw('bedrooms, COUNT(*) as count, AVG(base_rent) as avg_rent')
-        ->groupBy('bedrooms')
-        ->orderBy('bedrooms')
+    $unitMix = Unit::whereIn('property_id', $propertyIds)
+        ->selectRaw('unit_type, COUNT(*) as count, AVG(base_rent) as avg_rent')
+        ->groupBy('unit_type')
+        ->orderByDesc('count')
         ->get()
-        ->map(fn($u) => [
-            'bedrooms' => $u->bedrooms,
-            'count'    => $u->count,
-            'avg_rent' => round($u->avg_rent, 0),
+        ->map(fn($row) => [
+            'type'     => ucfirst(str_replace('_', ' ', $row->unit_type ?? 'apartment')),
+            'count'    => (int) $row->count,
+            'avg_rent' => (float) round($row->avg_rent, 0),
         ]);
 
-    // 2. Popular unit sizes by bathrooms
-    $bathroomStats = Unit::whereIn('property_id', $propertyIds)
-        ->selectRaw('bathrooms, COUNT(*) as count, AVG(base_rent) as avg_rent')
-        ->groupBy('bathrooms')
-        ->orderBy('bathrooms')
-        ->get()
-        ->map(fn($u) => [
-            'bathrooms' => $u->bathrooms,
-            'count'     => $u->count,
-            'avg_rent'  => round($u->avg_rent, 0),
-        ]);
-
-    // 3. Average lease duration (in months) for completed or active leases with known end_date
     $averageLeaseMonths = Lease::whereIn('unit_id', $unitIds)
         ->whereNotNull('end_date')
-        ->where('status', 'active')
-        ->orWhere('status', 'terminated')
+        ->whereIn('status', ['active', 'terminated', 'expired'])
         ->get()
         ->avg(fn($l) => \Carbon\Carbon::parse($l->start_date)->diffInMonths($l->end_date));
 
-    $averageLeaseMonths = round($averageLeaseMonths ?? 0, 1);
-
-    // 4. Turnover rate: number of leases ended in last 12 months / average active leases
-    $leasesEndedLastYear = Lease::whereIn('unit_id', $unitIds)
-        ->where('status', 'terminated')
+    $endedLastYear  = Lease::whereIn('unit_id', $unitIds)
+        ->whereIn('status', ['terminated', 'expired'])
         ->where('end_date', '>=', now()->subYear())
         ->count();
-    $avgActiveLeases = Lease::whereIn('unit_id', $unitIds)
-        ->where('status', 'active')
-        ->count();
-    $turnoverRate = $avgActiveLeases > 0 ? round(($leasesEndedLastYear / $avgActiveLeases) * 100, 1) : 0;
+    $turnoverRate   = $activeLeases->count() > 0
+        ? round(($endedLastYear / $activeLeases->count()) * 100, 1) : 0;
 
-    // 5. Average rent by bedroom count (already in bedroomStats, but maybe separate)
-    //    we'll reuse above.
+    // Smart insights — max 3, only show if condition is met
+    $insights = [];
+
+    if (!is_null($revenueChangePct)) {
+        $dir = $revenueChangePct >= 0 ? 'up' : 'down';
+        $insights[] = [
+            'type'  => $revenueChangePct >= 0 ? 'positive' : 'warning',
+            'icon'  => $revenueChangePct >= 0 ? '📈' : '📉',
+            'text'  => 'Revenue is ' . ($revenueChangePct >= 0 ? 'up' : 'down') . ' '
+                . abs($revenueChangePct) . '% compared to the previous '
+                . $months . ' months.',
+            'link'  => null,
+        ];
+    }
+
+    if ($collectionRateChange < -5) {
+        $insights[] = [
+            'type'  => 'warning',
+            'icon'  => '⚠️',
+            'text'  => 'Collection rate dropped ' . abs($collectionRateChange)
+                . '% vs last month. ' . $arrearsCount . ' '
+                . ($arrearsCount === 1 ? 'tenant is' : 'tenants are')
+                . ' behind on rent.',
+            'link'  => route('tenants.index'),
+            'label' => 'View tenants',
+        ];
+    } elseif ($collectionRateChange > 5) {
+        $insights[] = [
+            'type'  => 'positive',
+            'icon'  => '✅',
+            'text'  => 'Collection rate improved ' . abs($collectionRateChange)
+                . '% vs last month. Great progress.',
+            'link'  => null,
+        ];
+    }
+
+    if ($expiringLeases->count() > 0) {
+        $expiringRevenue = $expiringLeases->sum('rent_amount');
+        $pctOfTotal      = $expectedRent > 0
+            ? round(($expiringRevenue / $expectedRent) * 100) : 0;
+        $insights[] = [
+            'type'  => $pctOfTotal >= 30 ? 'danger' : 'warning',
+            'icon'  => '🔔',
+            'text'  => $expiringLeases->count() . ' '
+                . ($expiringLeases->count() === 1 ? 'lease expires' : 'leases expire')
+                . ' in the next 60 days, representing '
+                . $pctOfTotal . '% of your monthly revenue.',
+            'link'  => route('leases.index'),
+            'label' => 'View expiring leases',
+        ];
+    }
+
+    if ($vacantUnits > 0 && $expectedRent > 0) {
+        $vacancyPct = round(($vacancyCost / ($expectedRent + $vacancyCost)) * 100);
+        $insights[] = [
+            'type'  => 'warning',
+            'icon'  => '🏠',
+            'text'  => $vacantUnits . ' vacant '
+                . ($vacantUnits === 1 ? 'unit is' : 'units are')
+                . ' costing ' . $vacancyPct . '% of potential revenue — '
+                . '@money(' . $vacancyCost . ')' . '/month in lost income.',
+            'link'  => null,
+            'label' => null,
+        ];
+    }
+
+    $insights = array_slice($insights, 0, 3);
+
+    $chartPayload = [
+        'months'         => $monthlyData,
+        'monthsAccrual'  => $monthlyDataAccrual,
+        'methods'        => $paymentMethods->values(),
+        'types'          => $typeBreakdown->values(),
+    ];
 
     return compact(
-        'monthlyData', 'totalRevenue', 'occupancyRate',
-        'totalUnits', 'occupiedUnits', 'collectionRate',
-        'expectedRent', 'collectedRent', 'paymentMethods',
-        'typeBreakdown', 'propertyRevenue', 'avgDaysToPay',
-        'topTenants', 'arrearsCount', 'expiringLeases',
-        'bedroomStats', 'bathroomStats', 'averageLeaseMonths', 'turnoverRate'
+        'months',
+        'periodStart',
+        'periodEnd',
+        'monthlyData',
+        'monthlyDataAccrual',
+        'totalRevenue',
+        'totalRevenueAccrual',
+        'previousRevenue',
+        'revenueChangePct',
+        'expectedRent',
+        'collectedRent',
+        'collectionRate',
+        'collectionRateChange',
+        'prevCollectionRate',
+        'arrearsAmount',
+        'arrearsCount',
+        'totalUnits',
+        'occupiedUnits',
+        'vacantUnits',
+        'maintenanceUnits',
+        'occupancyRate',
+        'vacancyCost',
+        'vacantUnitsList',
+        'heatmap',
+        'maxHeatmapCount',
+        'paymentMethods',
+        'typeBreakdown',
+        'propertyRevenue',
+        'topTenants',
+        'avgDaysToPay',
+        'expiringLeases',
+        'unitMix',
+        'averageLeaseMonths',
+        'turnoverRate',
+        'insights',
+        'chartPayload'
     );
 });
 
 ?>
 
+@php
+$data = $this->reportData;
+$maxPropertyRevenue = $data['propertyRevenue']->max('revenue') ?: 1;
+$methodTotal = $data['paymentMethods']->sum('total') ?: 1;
+$typeTotal = $data['typeBreakdown']->sum('total') ?: 1;
+$unitMixTotal = $data['unitMix']->sum('count') ?: 1;
+$trendColor = is_null($data['revenueChangePct'])
+? '#667085'
+: ($data['revenueChangePct'] >= 0 ? '#1F7A4D' : '#9F403D');
+
+$activeRevenue = $basis === 'accrual' ? $data['totalRevenueAccrual'] : $data['totalRevenue'];
+$activeMonthly = $basis === 'accrual' ? $data['monthlyDataAccrual'] : $data['monthlyData'];
+@endphp
+
 <div>
-    <!-- Main content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {{-- Header --}}
-        <div class="flex items-start justify-between mb-8">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between print:hidden">
             <div>
-                <p class="font-inter text-xs font-medium uppercase tracking-widest"
-                    style="color:#9BABB3; letter-spacing:0.08em;">Performance Overview</p>
-                <h1 class="font-manrope text-2xl font-semibold mt-1" style="color:#283439;">
-                    Analytical Reports
-                </h1>
+                <p class="font-inter text-xs font-semibold uppercase"
+                    style="color:#7B8794; letter-spacing:0.08em;">Portfolio intelligence</p>
+                <h1 class="font-manrope text-2xl font-semibold mt-1" style="color:#24313A;">Reports</h1>
+                <p class="font-inter text-sm mt-1" style="color:#7B8794;">
+                    @appdate($data['periodStart']) to @appdate($data['periodEnd'])
+                </p>
             </div>
-            <div class="flex items-center gap-3 print:hidden">
+            <div class="flex flex-wrap gap-3 items-center">
+
+                {{-- Cash / Accrual toggle --}}
+                <div class="flex rounded-lg overflow-hidden"
+                    style="box-shadow:0 0 0 1px #D9E1E7;">
+                    <button wire:click="$set('basis', 'cash')"
+                        class="font-inter text-xs font-semibold px-3 py-2 transition-colors"
+                        style="background: {{ $basis === 'cash' ? '#35424D' : '#FFFFFF' }};
+                           color: {{ $basis === 'cash' ? '#FFFFFF' : '#7B8794' }};">
+                        Cash
+                    </button>
+                    <button wire:click="$set('basis', 'accrual')"
+                        class="font-inter text-xs font-semibold px-3 py-2 transition-colors"
+                        style="background: {{ $basis === 'accrual' ? '#35424D' : '#FFFFFF' }};
+                           color: {{ $basis === 'accrual' ? '#FFFFFF' : '#7B8794' }};">
+                        Accrual
+                    </button>
+                </div>
+
                 <select wire:model.live="period"
-                    class="font-inter text-sm px-4 py-2 rounded-md focus:outline-none"
-                    style="background-color:#FFFFFF; color:#283439;">
+                    class="font-inter text-sm px-4 py-2 rounded-lg border-0 focus:outline-none"
+                    style="background:#FFFFFF; color:#24313A; box-shadow:0 0 0 1px #D9E1E7;">
                     <option value="3">Last 3 months</option>
                     <option value="6">Last 6 months</option>
                     <option value="12">Last 12 months</option>
                 </select>
+
+                <a href="{{ route('transactions.export') }}"
+                    class="font-inter text-xs font-semibold px-4 py-2.5 rounded-lg transition-opacity hover:opacity-80"
+                    style="background:#FFFFFF; color:#35424D; box-shadow:0 0 0 1px #D9E1E7;">
+                    ↓ Export CSV
+                </a>
+
                 <button onclick="window.print()"
-                    class="font-inter text-xs font-semibold text-white px-4 py-2.5
-                        rounded-md transition-opacity hover:opacity-90"
-                    style="background: linear-gradient(135deg, #585E6C, #4C5260);">
-                    Print Report
+                    class="font-inter text-xs font-semibold text-white px-4 py-2.5 rounded-lg transition-opacity hover:opacity-90"
+                    style="background:#35424D;">
+                    Print
                 </button>
             </div>
         </div>
 
-        {{-- Row 1: KPI cards (same as before) --}}
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-5 mb-6">
-            <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
-                    Total Revenue
-                </p>
-                <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
-                    @money($this->reportData['totalRevenue'])
-                </p>
-                <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                    Last {{ $period }} months
-                </p>
-            </div>
-            <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
-                    Collection Rate
-                </p>
-                <p class="font-manrope text-2xl font-bold mt-2"
-                    style="color: {{ $this->reportData['collectionRate'] >= 80 ? '#22863a' : '#9F403D' }};">
-                    {{ $this->reportData['collectionRate'] }}%
-                </p>
-                <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                    {{ $this->reportData['arrearsCount'] }} tenants unpaid this month
-                </p>
-            </div>
-            <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
-                    Occupancy Rate
-                </p>
-                <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
-                    {{ $this->reportData['occupancyRate'] }}%
-                </p>
-                <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                    {{ $this->reportData['occupiedUnits'] }} of {{ $this->reportData['totalUnits'] }} units
-                </p>
-            </div>
-            <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">
-                    Avg. Days to Pay
-                </p>
-                <p class="font-manrope text-2xl font-bold mt-2" style="color:#283439;">
-                    Day {{ number_format($this->reportData['avgDaysToPay'], 0) }}
-                </p>
-                <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                    Average payment day of month
-                </p>
+        {{-- Basis label --}}
+        @if($basis === 'accrual')
+        <div class="px-4 py-2.5 rounded-lg font-inter text-xs"
+            style="background:#FBF7F2; color:#8A5A12; box-shadow:0 0 0 1px #EDD9B0;">
+            <strong>Accrual basis:</strong> showing expected rent invoiced, not cash actually received.
+            Switch to Cash to see collected amounts.
+        </div>
+        @endif
+
+        {{-- Smart Insights pulse row --}}
+        @if(!empty($data['insights']))
+        <div class="space-y-2">
+            <p class="font-inter text-xs font-semibold uppercase"
+                style="color:#7B8794; letter-spacing:0.08em;">Smart insights</p>
+            <div class="grid grid-cols-1 md:grid-cols-{{ min(count($data['insights']), 3) }} gap-3">
+                @foreach($data['insights'] as $insight)
+                @php
+                $bgColor = match($insight['type']) {
+                'positive' => '#F0FAF4',
+                'warning' => '#FBF7F2',
+                'danger' => '#FDF2F2',
+                default => '#F7FAFC',
+                };
+                $borderColor = match($insight['type']) {
+                'positive' => '#A8DFC0',
+                'warning' => '#EDD9B0',
+                'danger' => '#F5C0BC',
+                default => '#D9E1E7',
+                };
+                $textColor = match($insight['type']) {
+                'positive' => '#1F7A4D',
+                'warning' => '#8A5A12',
+                'danger' => '#9F403D',
+                default => '#7B8794',
+                };
+                @endphp
+                <div class="flex items-start gap-3 px-4 py-3 rounded-lg"
+                    style="background:{{ $bgColor }}; box-shadow:0 0 0 1px {{ $borderColor }};">
+                    <span class="text-base leading-none mt-0.5">{{ $insight['icon'] }}</span>
+                    <div class="min-w-0">
+                        <p class="font-inter text-sm leading-relaxed" style="color:{{ $textColor }};">
+                            {{ $insight['text'] }}
+                        </p>
+                        @if(!empty($insight['link']))
+                        <a href="{{ $insight['link'] }}" wire:navigate
+                            class="font-inter text-xs font-semibold mt-1 inline-block hover:opacity-70"
+                            style="color:{{ $textColor }};">
+                            {{ $insight['label'] ?? 'View' }} →
+                        </a>
+                        @endif
+                    </div>
+                </div>
+                @endforeach
             </div>
         </div>
+        @endif
 
-        {{-- Row 2: Revenue chart + Collection progress (unchanged) --}}
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {{-- KPI cards with skeleton loader + micro-interactions --}}
+        <section wire:loading.remove>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
 
-            <div class="lg:col-span-2 rounded-xl p-6" style="background-color:#FFFFFF;">
-                <div class="flex items-start justify-between mb-6">
-                    <div>
-                        <p class="font-inter text-sm font-medium" style="color:#283439;">
-                            Monthly Revenue
-                        </p>
-                        <p class="font-inter text-xs mt-0.5" style="color:#9BABB3;">
-                            Rent collected per month
-                        </p>
-                    </div>
-                    <p class="font-manrope text-lg font-bold" style="color:#283439;">
-                        @money($this->reportData['totalRevenue'])
+                {{-- Collected rent --}}
+                <div class="rounded-lg p-5 transition-all duration-300 hover:-translate-y-1 cursor-default"
+                    style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                    <p class="font-inter text-xs font-semibold uppercase"
+                        style="color:#7B8794; letter-spacing:0.06em;">
+                        {{ $basis === 'accrual' ? 'Expected rent' : 'Collected rent' }}
+                    </p>
+                    <p class="font-manrope text-2xl font-bold mt-2" style="color:#24313A;">
+                        @money($activeRevenue)
+                    </p>
+                    <p class="font-inter text-xs mt-2" style="color:{{ $trendColor }};">
+                        @if(is_null($data['revenueChangePct']))
+                        No prior period data
+                        @else
+                        {{ $data['revenueChangePct'] >= 0 ? '+' : '' }}{{ $data['revenueChangePct'] }}%
+                        vs previous {{ $data['months'] }} months
+                        @endif
                     </p>
                 </div>
-                <div style="position:relative; height:200px;">
+
+                {{-- Collection rate --}}
+                <div class="rounded-lg p-5 transition-all duration-300 hover:-translate-y-1 cursor-default"
+                    style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                    <p class="font-inter text-xs font-semibold uppercase"
+                        style="color:#7B8794; letter-spacing:0.06em;">Collection rate</p>
+                    <p class="font-manrope text-2xl font-bold mt-2"
+                        style="color:{{ $data['collectionRate'] >= 85 ? '#1F7A4D' : ($data['collectionRate'] >= 65 ? '#8A5A12' : '#9F403D') }};">
+                        {{ $data['collectionRate'] }}%
+                    </p>
+                    <p class="font-inter text-xs mt-2"
+                        style="color:{{ $data['collectionRateChange'] >= 0 ? '#1F7A4D' : '#9F403D' }};">
+                        {{ $data['collectionRateChange'] >= 0 ? '↑' : '↓' }}
+                        {{ abs($data['collectionRateChange']) }}% vs last month
+                    </p>
+                </div>
+
+                {{-- Arrears --}}
+                <div class="rounded-lg p-5 transition-all duration-300 hover:-translate-y-1 cursor-default"
+                    style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                    <p class="font-inter text-xs font-semibold uppercase"
+                        style="color:#7B8794; letter-spacing:0.06em;">Open arrears</p>
+                    <p class="font-manrope text-2xl font-bold mt-2" style="color:#9F403D;">
+                        @money($data['arrearsAmount'])
+                    </p>
+                    <p class="font-inter text-xs mt-2" style="color:#7B8794;">
+                        {{ $data['arrearsCount'] }} active {{ $data['arrearsCount'] === 1 ? 'lease' : 'leases' }} behind
+                    </p>
+                </div>
+
+                {{-- Occupancy — clickable drill-down --}}
+                <div wire:click="$toggle('show_vacant')"
+                    class="rounded-lg p-5 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+                    style="background:#FFFFFF; box-shadow:0 0 0 1px {{ $show_vacant ? '#35424D' : '#E5EBEF' }};">
+                    <div class="flex items-start justify-between">
+                        <p class="font-inter text-xs font-semibold uppercase"
+                            style="color:#7B8794; letter-spacing:0.06em;">Occupancy</p>
+                        <span class="font-inter text-xs px-2 py-0.5 rounded-full"
+                            style="background:#E9EEF2; color:#35424D;">
+                            {{ $show_vacant ? '▲ hide' : '▼ units' }}
+                        </span>
+                    </div>
+                    <p class="font-manrope text-2xl font-bold mt-2" style="color:#24313A;">
+                        {{ $data['occupancyRate'] }}%
+                    </p>
+                    <p class="font-inter text-xs mt-2" style="color:#7B8794;">
+                        {{ $data['occupiedUnits'] }} occupied ·
+                        <span style="color:{{ $data['vacantUnits'] > 0 ? '#9F403D' : '#1F7A4D' }};">
+                            {{ $data['vacantUnits'] }} vacant
+                        </span>
+                        · {{ $data['maintenanceUnits'] }} maintenance
+                    </p>
+                </div>
+
+            </div>
+        </section>
+
+        {{-- Skeleton loader while computing --}}
+        <section wire:loading>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                @foreach(range(1,4) as $i)
+                <div class="rounded-lg p-5 animate-pulse" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                    <div class="h-3 rounded w-24 mb-3" style="background:#E9EEF2;"></div>
+                    <div class="h-8 rounded w-32 mb-2" style="background:#E9EEF2;"></div>
+                    <div class="h-3 rounded w-20" style="background:#E9EEF2;"></div>
+                </div>
+                @endforeach
+            </div>
+        </section>
+
+        {{-- Vacant units drill-down --}}
+        @if($show_vacant && $data['vacantUnits'] > 0)
+        <div class="rounded-lg overflow-hidden" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+            <div class="px-5 py-4 flex items-center justify-between"
+                style="border-bottom:1px solid #EEF2F5;">
+                <p class="font-manrope text-sm font-semibold" style="color:#24313A;">
+                    Vacant Units — {{ $data['vacantUnits'] }} available
+                </p>
+                <p class="font-inter text-xs" style="color:#9F403D;">
+                    @money($data['vacancyCost'])/month in lost revenue
+                </p>
+            </div>
+            <div class="grid grid-cols-3 px-5 py-3 font-inter text-xs font-semibold uppercase"
+                style="color:#7B8794; background:#F7FAFC; letter-spacing:0.06em;">
+                <p>Unit</p>
+                <p>Property</p>
+                <p>Base Rent</p>
+            </div>
+            @foreach($data['vacantUnitsList'] as $unit)
+            <div class="grid grid-cols-3 px-5 py-3 font-inter text-sm items-center"
+                style="border-top:1px solid #EEF2F5; color:#24313A;">
+                <p class="font-medium">Unit {{ $unit->unit_number }}</p>
+                <p style="color:#7B8794;">{{ $unit->property->name }}</p>
+                <div class="flex items-center justify-between">
+                    <p>@money($unit->base_rent)</p>
+                    <a href="{{ route('leases.create') }}?unit_id={{ $unit->id }}" wire:navigate
+                        class="font-inter text-xs font-semibold px-3 py-1 rounded-md"
+                        style="background:#E9EEF2; color:#35424D;">
+                        + Lease
+                    </a>
+                </div>
+            </div>
+            @endforeach
+        </div>
+        @endif
+
+        {{-- Revenue chart + operating signals --}}
+        <section
+            id="reportChartPayload"
+            data-chart-payload='@json($data["chartPayload"])'
+            data-basis="{{ $basis }}"
+            class="grid grid-cols-1 xl:grid-cols-3 gap-6"
+            wire:key="report-charts-{{ $period }}-{{ $basis }}">
+
+            <div class="xl:col-span-2 rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-5">
+                    <div>
+                        <p class="font-manrope text-base font-semibold" style="color:#24313A;">
+                            Monthly {{ $basis === 'accrual' ? 'expected' : 'collected' }} rent
+                        </p>
+                        <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                            {{ $basis === 'accrual' ? 'Invoiced amounts' : 'Cash received' }}
+                            over the selected window.
+                        </p>
+                    </div>
+                    <p class="font-manrope text-lg font-bold" style="color:#24313A;">
+                        @money($activeRevenue)
+                    </p>
+                </div>
+                <div class="relative h-[280px]">
                     <canvas id="revenueChart"></canvas>
                 </div>
             </div>
 
-            <div class="space-y-5">
-                <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                    <p class="font-inter text-xs uppercase tracking-widest mb-3"
-                        style="color:#9BABB3;">This Month's Collection</p>
-                    <p class="font-manrope text-3xl font-bold" style="color:#283439;">
-                        {{ $this->reportData['collectionRate'] }}%
-                    </p>
-                    <div class="mt-3 rounded-full overflow-hidden" style="background-color:#EFF4F7; height:6px;">
-                        <div class="h-full rounded-full"
-                            style="width:{{ min($this->reportData['collectionRate'], 100) }}%;
-                                   background: linear-gradient(135deg,
-                                   {{ $this->reportData['collectionRate'] >= 80 ? '#22863a' : '#9F403D' }},
-                                   {{ $this->reportData['collectionRate'] >= 80 ? '#196032' : '#7a2f2d' }});">
-                        </div>
-                    </div>
-                    <div class="flex justify-between mt-2">
-                        <p class="font-inter text-xs" style="color:#9BABB3;">
-                            @money($this->reportData['collectedRent']) collected
-                        </p>
-                        <p class="font-inter text-xs" style="color:#9BABB3;">
-                            of @money($this->reportData['expectedRent'])
-                        </p>
-                    </div>
-                </div>
-                <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                    <p class="font-inter text-xs uppercase tracking-widest mb-3"
-                        style="color:#9BABB3;">Occupancy</p>
-                    <p class="font-manrope text-3xl font-bold" style="color:#283439;">
-                        {{ $this->reportData['occupancyRate'] }}%
-                    </p>
-                    <div class="mt-3 rounded-full overflow-hidden" style="background-color:#EFF4F7; height:6px;">
-                        <div class="h-full rounded-full"
-                            style="width:{{ $this->reportData['occupancyRate'] }}%;
-                                   background: linear-gradient(135deg, #585E6C, #4C5260);">
-                        </div>
-                    </div>
-                    <p class="font-inter text-xs mt-2" style="color:#9BABB3;">
-                        {{ $this->reportData['occupiedUnits'] }} occupied ·
-                        {{ $this->reportData['totalUnits'] - $this->reportData['occupiedUnits'] }} vacant
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        {{-- Row 3: Payment methods + Transaction types (unchanged) --}}
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Payment methods -->
-            <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                <p class="font-manrope text-sm font-semibold mb-1" style="color:#283439;">
-                    Payment Methods
-                </p>
-                <p class="font-inter text-xs mb-5" style="color:#9BABB3;">
-                    How tenants prefer to pay
-                </p>
-                @php $methodTotal = $this->reportData['paymentMethods']->sum('total'); @endphp
-                @forelse($this->reportData['paymentMethods'] as $method)
-                @php $pct = $methodTotal > 0 ? round(($method['total'] / $methodTotal) * 100) : 0; @endphp
-                <div class="mb-4">
-                    <div class="flex items-center justify-between mb-1">
-                        <p class="font-inter text-sm" style="color:#283439;">{{ $method['method'] }}</p>
-                        <div class="flex items-center gap-3">
-                            <p class="font-inter text-xs" style="color:#9BABB3;">
-                                {{ $method['count'] }} payments
-                            </p>
-                            <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                                {{ $pct }}%
-                            </p>
-                        </div>
-                    </div>
-                    <div class="rounded-full overflow-hidden" style="background-color:#EFF4F7; height:5px;">
-                        <div class="h-full rounded-full"
-                            style="width:{{ $pct }}%; background: linear-gradient(135deg, #585E6C, #4C5260);">
-                        </div>
-                    </div>
-                    <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                        @money($method['total'])
-                    </p>
-                </div>
-                @empty
-                <p class="font-inter text-sm" style="color:#9BABB3;">No payment data yet.</p>
-                @endforelse
-                <div class="mt-4" style="position:relative; height:160px;"><canvas id="methodChart"></canvas></div>
-            </div>
-
-            <!-- Transaction types -->
-            <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                <p class="font-manrope text-sm font-semibold mb-1" style="color:#283439;">
-                    Transaction Breakdown
-                </p>
-                <p class="font-inter text-xs mb-5" style="color:#9BABB3;">
-                    Revenue by transaction type
-                </p>
-                @php
-                    $typeTotal = $this->reportData['typeBreakdown']->sum('total');
-                    $typeColors = ['Rent' => '#585E6C', 'Deposit' => '#4C5260', 'Penalty' => '#9F403D', 'Refund' => '#9BABB3'];
-                @endphp
-                @forelse($this->reportData['typeBreakdown'] as $type)
-                @php $pct = $typeTotal > 0 ? round(($type['total'] / $typeTotal) * 100) : 0; $color = $typeColors[$type['type']] ?? '#585E6C'; @endphp
-                <div class="mb-4">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="flex items-center gap-2">
-                            <div class="w-2.5 h-2.5 rounded-full" style="background-color:{{ $color }};"></div>
-                            <p class="font-inter text-sm" style="color:#283439;">{{ $type['type'] }}</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <p class="font-inter text-xs" style="color:#9BABB3;">
-                                {{ $type['count'] }} txn{{ $type['count'] > 1 ? 's' : '' }}
-                            </p>
-                            <p class="font-manrope text-sm font-bold" style="color:#283439;">
-                                @money($type['total'])
-                            </p>
-                        </div>
-                    </div>
-                    <div class="rounded-full overflow-hidden" style="background-color:#EFF4F7; height:5px;">
-                        <div class="h-full rounded-full" style="width:{{ $pct }}%; background-color:{{ $color }};"></div>
-                    </div>
-                </div>
-                @empty
-                <p class="font-inter text-sm" style="color:#9BABB3;">No transactions yet.</p>
-                @endforelse
-            </div>
-        </div>
-
-        {{-- NEW ROW: Popular unit sizes & Lease metrics --}}
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Bedroom popularity -->
-            <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                <p class="font-manrope text-sm font-semibold mb-1" style="color:#283439;">
-                    Popular Unit Sizes
-                </p>
-                <p class="font-inter text-xs mb-4" style="color:#9BABB3;">
-                    Distribution by bedroom count
-                </p>
-                <div class="space-y-3">
-                    @foreach($this->reportData['bedroomStats'] as $b)
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Operating signals</p>
+                <div class="mt-5 space-y-5">
                     <div>
-                        <div class="flex items-center justify-between mb-1">
-                            <p class="font-inter text-sm" style="color:#283439;">
-                                {{ $b['bedrooms'] }} {{ Str::plural('Bedroom', $b['bedrooms']) }}
-                            </p>
-                            <p class="font-inter text-sm font-medium" style="color:#283439;">
-                                {{ $b['count'] }} units
-                            </p>
+                        <div class="flex justify-between text-xs font-inter mb-2" style="color:#7B8794;">
+                            <span>Collection progress</span>
+                            <span>{{ min($data['collectionRate'], 100) }}%</span>
                         </div>
-                        <div class="rounded-full overflow-hidden mb-1" style="background-color:#EFF4F7; height:6px;">
-                            <div class="h-full rounded-full"
-                                style="width: {{ ($b['count'] / $this->reportData['totalUnits']) * 100 }}%;
-                                       background: linear-gradient(135deg, #585E6C, #4C5260);">
+                        <div class="h-2 rounded-full overflow-hidden" style="background:#E9EEF2;">
+                            <div class="h-full rounded-full transition-all duration-700"
+                                style="width:{{ min($data['collectionRate'], 100) }}%; background:#1F7A4D;">
                             </div>
                         </div>
-                        <p class="font-inter text-xs" style="color:#9BABB3;">
-                            Avg rent: @money($b['avg_rent'])
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-lg p-3" style="background:#F7FAFC;">
+                            <p class="font-inter text-xs" style="color:#7B8794;">Avg monthly</p>
+                            <p class="font-manrope text-base font-bold mt-1" style="color:#24313A;">
+                                @money($data['months'] > 0 ? $activeRevenue / $data['months'] : 0)
+                            </p>
+                        </div>
+                        <div class="rounded-lg p-3" style="background:#F7FAFC;">
+                            <p class="font-inter text-xs" style="color:#7B8794;">Avg pay day</p>
+                            <p class="font-manrope text-base font-bold mt-1" style="color:#24313A;">
+                                Day {{ round($data['avgDaysToPay'] ?? 0) }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg p-4" style="background:#FBF7F2;">
+                        <p class="font-inter text-xs font-semibold uppercase"
+                            style="color:#8A5A12; letter-spacing:0.06em;">Lease risk</p>
+                        <p class="font-manrope text-xl font-bold mt-2" style="color:#24313A;">
+                            {{ $data['expiringLeases']->count() }} expiring
+                        </p>
+                        <p class="font-inter text-xs mt-1" style="color:#7B8794;">Next 60 days.</p>
+                    </div>
+
+                    <div class="rounded-lg p-4" style="background:#F7FAFC;">
+                        <p class="font-inter text-xs" style="color:#7B8794;">Average lease term</p>
+                        <p class="font-manrope text-xl font-bold mt-1" style="color:#24313A;">
+                            {{ round($data['averageLeaseMonths'] ?? 0, 1) }} months
+                        </p>
+                        <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                            Turnover {{ $data['turnoverRate'] }}%
                         </p>
                     </div>
-                    @endforeach
                 </div>
-                @if($this->reportData['bedroomStats']->isEmpty())
-                    <p class="font-inter text-sm" style="color:#9BABB3;">No unit data available.</p>
+            </div>
+        </section>
+
+        {{-- Payment heatmap --}}
+        <section class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+            <div class="flex items-start justify-between mb-5">
+                <div>
+                    <p class="font-manrope text-base font-semibold" style="color:#24313A;">
+                        Payment heatmap
+                    </p>
+                    <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                        Which days of the month tenants actually pay.
+                        Darker = more payments on that day.
+                    </p>
+                </div>
+                @if($data['avgDaysToPay'])
+                <div class="text-right">
+                    <p class="font-inter text-xs" style="color:#7B8794;">Peak payment day</p>
+                    <p class="font-manrope text-lg font-bold" style="color:#24313A;">
+                        Day {{ round($data['avgDaysToPay']) }}
+                    </p>
+                </div>
                 @endif
             </div>
 
-            <!-- Bathroom popularity + Lease metrics -->
-            <div class="space-y-5">
-                <div class="rounded-xl p-6" style="background-color:#FFFFFF;">
-                    <p class="font-inter text-xs uppercase tracking-widest mb-2" style="color:#9BABB3;">
-                        Bathroom Distribution
-                    </p>
-                    <div class="flex flex-wrap gap-3">
-                        @foreach($this->reportData['bathroomStats'] as $b)
-                        <div class="flex-1 min-w-[80px] text-center p-2 rounded-lg" style="background-color:#EFF4F7;">
-                            <p class="font-manrope text-xl font-bold" style="color:#283439;">{{ $b['count'] }}</p>
-                            <p class="font-inter text-xs" style="color:#9BABB3;">{{ $b['bathrooms'] }} Bath</p>
-                            <p class="font-inter text-xs mt-1" style="color:#585E6C;">
-                                @money($b['avg_rent'])
+            <div class="grid gap-2" style="grid-template-columns: repeat(31, minmax(0, 1fr));">
+                @for($day = 1; $day <= 31; $day++)
+                    @php
+                    $count=$data['heatmap'][$day] ?? 0;
+                    $intensity=$data['maxHeatmapCount']> 0
+                    ? $count / $data['maxHeatmapCount'] : 0;
+                    $alpha = $count > 0
+                    ? max(0.22, $intensity)
+                    : 0.06;
+                    $isAvg = round($data['avgDaysToPay'] ?? 0) === $day;
+                    @endphp
+                    <div class="flex flex-col items-center gap-1">
+                        <div class="w-full rounded"
+                            style="height:44px;
+                           background: rgba(53, 66, 77, {{ $alpha }});
+                           border: 1px solid rgba(53, 66, 77, 0.08);
+                           transition:all ..15s ease;
+                           {{ $isAvg ? 'box-shadow:0 0 0 2px #35424D;' : '' }}"
+                            title="Day {{ $day }}: {{ $count }} payment{{ $count !== 1 ? 's' : '' }}">
+                        </div>
+                        <p class="font-inter text-center"
+                            style="font-size:9px; color:{{ $isAvg ? '#24313A' : '#9BABB3' }};
+                           font-weight:{{ $isAvg ? '700' : '400' }};">
+                            {{ $day }}
+                        </p>
+                    </div>
+                    @endfor
+            </div>
+
+            <div class="flex items-center gap-3 mt-4">
+                <p class="font-inter text-xs" style="color:#7B8794;">Less</p>
+                @foreach([0.08, 0.25, 0.5, 0.75, 1.0] as $a)
+                <div class="w-5 h-3 rounded"
+                    style="background: rgba(53, 66, 77, {{ $a }});"></div>
+                @endforeach
+                <p class="font-inter text-xs" style="color:#7B8794;">More</p>
+            </div>
+        </section>
+
+        {{-- Payment methods + transaction mix --}}
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Payment methods</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                    <div class="relative h-[210px]">
+                        <canvas id="methodChart"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        @forelse($data['paymentMethods'] as $method)
+                        @php $pct = round(($method['total'] / $methodTotal) * 100); @endphp
+                        <div>
+                            <div class="flex justify-between gap-3">
+                                <p class="font-inter text-sm" style="color:#24313A;">{{ $method['method'] }}</p>
+                                <p class="font-manrope text-sm font-bold" style="color:#24313A;">{{ $pct }}%</p>
+                            </div>
+                            <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                                {{ $method['count'] }} payments · @money($method['total'])
                             </p>
                         </div>
-                        @endforeach
+                        @empty
+                        <p class="font-inter text-sm" style="color:#7B8794;">No payment method data.</p>
+                        @endforelse
                     </div>
-                    @if($this->reportData['bathroomStats']->isEmpty())
-                        <p class="font-inter text-sm" style="color:#9BABB3;">No bathroom data.</p>
-                    @endif
                 </div>
+            </div>
 
-                <div class="grid grid-cols-2 gap-5">
-                    <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                        <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Avg Lease Term</p>
-                        <p class="font-manrope text-2xl font-bold mt-1" style="color:#283439;">
-                            {{ $this->reportData['averageLeaseMonths'] }} mo
-                        </p>
-                        <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                            Average contract length
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Transaction mix</p>
+                <div class="mt-5 space-y-4">
+                    @forelse($data['typeBreakdown'] as $type)
+                    @php
+                    $pct = round(($type['total'] / $typeTotal) * 100);
+                    $color = match($type['type']) {
+                    'Rent' => '#35424D',
+                    'Deposit' => '#1F7A4D',
+                    'Penalty' => '#9F403D',
+                    'Refund' => '#7B8794',
+                    default => '#60717D',
+                    };
+                    @endphp
+                    <div>
+                        <div class="flex justify-between gap-3 mb-2">
+                            <p class="font-inter text-sm" style="color:#24313A;">{{ $type['type'] }}</p>
+                            <p class="font-manrope text-sm font-bold" style="color:#24313A;">
+                                @money($type['total'])
+                            </p>
+                        </div>
+                        <div class="h-2 rounded-full overflow-hidden" style="background:#E9EEF2;">
+                            <div class="h-full rounded-full"
+                                style="width:{{ $pct }}%; background:{{ $color }};"></div>
+                        </div>
+                        <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                            {{ $type['count'] }} transactions · {{ $pct }}% of period value
                         </p>
                     </div>
-                    <div class="rounded-xl p-5" style="background-color:#FFFFFF;">
-                        <p class="font-inter text-xs uppercase tracking-widest" style="color:#9BABB3;">Turnover Rate</p>
-                        <p class="font-manrope text-2xl font-bold mt-1"
-                            style="color: {{ $this->reportData['turnoverRate'] > 30 ? '#9F403D' : '#283439' }};">
-                            {{ $this->reportData['turnoverRate'] }}%
-                        </p>
-                        <p class="font-inter text-xs mt-1" style="color:#9BABB3;">
-                            Last 12 months
-                        </p>
-                    </div>
+                    @empty
+                    <p class="font-inter text-sm" style="color:#7B8794;">No transactions in this period.</p>
+                    @endforelse
                 </div>
             </div>
-        </div>
+        </section>
 
-        {{-- Row 4: Per-property revenue (unchanged) --}}
-        <div class="rounded-xl mb-6" style="background-color:#FFFFFF;">
-            <div class="px-6 py-5" style="border-bottom: 1px solid #EFF4F7;">
-                <p class="font-manrope text-base font-semibold" style="color:#283439;">
-                    Revenue by Property
-                </p>
-                <p class="font-inter text-xs mt-0.5" style="color:#9BABB3;">
-                    Last {{ $period }} months
-                </p>
-            </div>
-            <div class="grid grid-cols-5 px-6 py-3" style="background-color:#EFF4F7;">
-                <p class="font-inter text-xs font-medium uppercase tracking-widest col-span-2" style="color:#9BABB3;">Property</p>
-                <p class="font-inter text-xs font-medium uppercase tracking-widest" style="color:#9BABB3;">Revenue</p>
-                <p class="font-inter text-xs font-medium uppercase tracking-widest" style="color:#9BABB3;">Occupancy</p>
-                <p class="font-inter text-xs font-medium uppercase tracking-widest" style="color:#9BABB3;">Units</p>
-            </div>
-            @php $maxRevenue = $this->reportData['propertyRevenue']->max('revenue') ?: 1; @endphp
-            @forelse($this->reportData['propertyRevenue'] as $prop)
-            <div class="px-6 py-4 transition-colors"
-                onmouseenter="this.style.backgroundColor='#EFF4F7'"
-                onmouseleave="this.style.backgroundColor='transparent'">
-                <div class="grid grid-cols-5 items-center mb-2">
-                    <div class="col-span-2"><p class="font-inter text-sm font-medium" style="color:#283439;">{{ $prop['name'] }}</p></div>
-                    <p class="font-manrope text-sm font-bold" style="color:#283439;">@money($prop['revenue'])</p>
-                    <p class="font-inter text-sm" style="color:#283439;">{{ $prop['occupancy_rate'] }}%</p>
-                    <p class="font-inter text-sm" style="color:#9BABB3;">{{ $prop['occupied'] }}/{{ $prop['units'] }}</p>
+        {{-- Property performance table --}}
+        <section class="rounded-lg overflow-hidden" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+            <div class="px-6 py-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                style="border-bottom:1px solid #E5EBEF;">
+                <div>
+                    <p class="font-manrope text-base font-semibold" style="color:#24313A;">
+                        Property performance
+                    </p>
+                    <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                        Ranked by rent collected in the selected period.
+                    </p>
                 </div>
-                <div class="rounded-full overflow-hidden" style="background-color:#EFF4F7; height:4px;">
-                    <div class="h-full rounded-full"
-                        style="width:{{ round(($prop['revenue'] / $maxRevenue) * 100) }}%;
-                               background: linear-gradient(135deg, #585E6C, #4C5260);">
+                <p class="font-inter text-xs" style="color:#7B8794;">
+                    {{ $data['propertyRevenue']->count() }} properties
+                </p>
+            </div>
+
+            <div class="hidden md:grid grid-cols-12 px-6 py-3 font-inter text-xs font-semibold uppercase"
+                style="color:#7B8794; background:#F7FAFC; letter-spacing:0.06em;">
+                <p class="col-span-4">Property</p>
+                <p class="col-span-2">Revenue</p>
+                <p class="col-span-2">Collection</p>
+                <p class="col-span-2">Occupancy</p>
+                <p class="col-span-2">Units</p>
+            </div>
+
+            @forelse($data['propertyRevenue'] as $property)
+            @php $width = round(($property['revenue'] / $maxPropertyRevenue) * 100); @endphp
+            <div class="px-6 py-4" style="border-top:1px solid #EFF3F6;">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:items-center">
+                    <div class="md:col-span-4">
+                        <p class="font-inter text-sm font-semibold" style="color:#24313A;">
+                            {{ $property['name'] }}
+                        </p>
+                        <div class="h-1.5 rounded-full overflow-hidden mt-2" style="background:#E9EEF2;">
+                            <div class="h-full rounded-full"
+                                style="width:{{ $width }}%; background:#35424D;"></div>
+                        </div>
                     </div>
+                    <p class="font-manrope text-sm font-bold md:col-span-2" style="color:#24313A;">
+                        @money($property['revenue'])
+                    </p>
+                    <p class="font-inter text-sm md:col-span-2"
+                        style="color:{{ $property['collection_rate'] >= 85 ? '#1F7A4D' : ($property['collection_rate'] >= 65 ? '#8A5A12' : '#9F403D') }};">
+                        {{ $property['collection_rate'] }}%
+                    </p>
+                    <p class="font-inter text-sm md:col-span-2" style="color:#24313A;">
+                        {{ $property['occupancy_rate'] }}%
+                    </p>
+                    <p class="font-inter text-sm md:col-span-2" style="color:#7B8794;">
+                        {{ $property['occupied'] }}/{{ $property['units'] }}
+                    </p>
                 </div>
             </div>
             @empty
-            <div class="px-6 py-8 text-center"><p class="font-inter text-sm" style="color:#9BABB3;">No revenue data yet.</p></div>
+            <div class="px-6 py-8">
+                <p class="font-inter text-sm" style="color:#7B8794;">No property revenue data yet.</p>
+            </div>
             @endforelse
-        </div>
+        </section>
 
-        {{-- Row 5: Top tenants + Expiring leases (unchanged) --}}
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {{-- Bottom row: top tenants + lease expiries + unit mix --}}
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-            <div class="rounded-xl" style="background-color:#FFFFFF;">
-                <div class="px-6 py-4" style="border-bottom: 1px solid #EFF4F7;">
-                    <p class="font-manrope text-sm font-semibold" style="color:#283439;">Top Paying Tenants</p>
-                    <p class="font-inter text-xs mt-0.5" style="color:#9BABB3;">Last {{ $period }} months</p>
-                </div>
-                @forelse($this->reportData['topTenants'] as $i => $tenant)
-                <div class="flex items-center justify-between px-6 py-3 transition-colors"
-                    onmouseenter="this.style.backgroundColor='#EFF4F7'"
-                    onmouseleave="this.style.backgroundColor='transparent'">
-                    <div class="flex items-center gap-3">
-                        <p class="font-manrope text-xs font-bold w-5 text-right" style="color:#9BABB3;">{{ $i + 1 }}</p>
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-manrope text-xs font-bold"
-                            style="background-color:#E7EFF3; color:#585E6C;">
-                            {{ strtoupper(substr($tenant['name'], 0, 1)) }}{{ strtoupper(substr(strstr($tenant['name'], ' '), 1, 1)) }}
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Top tenants</p>
+                <div class="mt-4 space-y-4">
+                    @forelse($data['topTenants'] as $index => $tenant)
+                    <div class="flex items-center justify-between gap-4">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="font-manrope text-xs font-bold w-6 h-6 rounded-full
+                            flex items-center justify-center shrink-0"
+                                style="background:#E9EEF2; color:#35424D;">
+                                {{ $index + 1 }}
+                            </span>
+                            <div class="min-w-0">
+                                <p class="font-inter text-sm truncate" style="color:#24313A;">
+                                    {{ $tenant['name'] }}
+                                </p>
+                                <p class="font-inter text-xs" style="color:#7B8794;">
+                                    {{ $tenant['count'] }} payments
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p class="font-inter text-sm" style="color:#283439;">{{ $tenant['name'] }}</p>
-                            <p class="font-inter text-xs" style="color:#9BABB3;">{{ $tenant['count'] }} payment(s)</p>
-                        </div>
+                        <p class="font-manrope text-sm font-bold shrink-0" style="color:#24313A;">
+                            @money($tenant['total'])
+                        </p>
                     </div>
-                    <p class="font-manrope text-sm font-bold" style="color:#283439;">@money($tenant['total'])</p>
+                    @empty
+                    <p class="font-inter text-sm" style="color:#7B8794;">No tenant data.</p>
+                    @endforelse
                 </div>
-                @empty
-                <div class="px-6 py-8 text-center"><p class="font-inter text-sm" style="color:#9BABB3;">No payment data yet.</p></div>
-                @endforelse
             </div>
 
-            <div class="rounded-xl" style="background-color:#FFFFFF;">
-                <div class="px-6 py-4 flex items-center justify-between" style="border-bottom: 1px solid #EFF4F7;">
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Lease expiries</p>
+                <div class="mt-4 space-y-4">
+                    @forelse($data['expiringLeases'] as $lease)
+                    @php $daysLeft = (int) now()->diffInDays($lease->end_date, false); @endphp
+                    <div class="flex items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="font-inter text-sm truncate" style="color:#24313A;">
+                                {{ $lease->tenant->full_name }}
+                            </p>
+                            <p class="font-inter text-xs truncate" style="color:#7B8794;">
+                                {{ $lease->unit->property->name }} / Unit {{ $lease->unit->unit_number }}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="font-inter text-xs font-semibold px-2.5 py-1 rounded-full"
+                                style="background:{{ $daysLeft <= 14 ? '#FDECEA' : '#E9EEF2' }};
+                                   color:{{ $daysLeft <= 14 ? '#9F403D' : '#35424D' }};">
+                                {{ $daysLeft }}d
+                            </span>
+                            <a href="{{ route('leases.renew', $lease) }}" wire:navigate
+                                class="font-inter text-xs font-semibold px-2.5 py-1 rounded-full"
+                                style="background:#E9EEF2; color:#35424D;">
+                                Renew
+                            </a>
+                        </div>
+                    </div>
+                    @empty
+                    <p class="font-inter text-sm" style="color:#7B8794;">
+                        No leases expiring in 60 days.
+                    </p>
+                    @endforelse
+                </div>
+            </div>
+
+            <div class="rounded-lg p-6" style="background:#FFFFFF; box-shadow:0 0 0 1px #E5EBEF;">
+                <p class="font-manrope text-base font-semibold" style="color:#24313A;">Unit mix</p>
+                <div class="mt-4 space-y-4">
+                    @forelse($data['unitMix'] as $unit)
+                    @php $pct = round(($unit['count'] / $unitMixTotal) * 100); @endphp
                     <div>
-                        <p class="font-manrope text-sm font-semibold" style="color:#283439;">Leases Expiring Soon</p>
-                        <p class="font-inter text-xs mt-0.5" style="color:#9BABB3;">Next 30 days</p>
-                    </div>
-                    <span class="font-inter text-xs font-medium px-3 py-1 rounded-full"
-                        style="background-color:#FDECEA; color:#9F403D;">
-                        {{ $this->reportData['expiringLeases']->count() }} expiring
-                    </span>
-                </div>
-                @forelse($this->reportData['expiringLeases'] as $lease)
-                @php $daysLeft = (int) now()->diffInDays($lease->end_date, false); @endphp
-                <div class="flex items-center justify-between px-6 py-3 transition-colors"
-                    onmouseenter="this.style.backgroundColor='#EFF4F7'"
-                    onmouseleave="this.style.backgroundColor='transparent'">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center font-manrope text-xs font-bold"
-                            style="background-color:#E7EFF3; color:#585E6C;">
-                            {{ strtoupper(substr($lease->tenant->full_name, 0, 1)) }}{{ strtoupper(substr(strstr($lease->tenant->full_name, ' '), 1, 1)) }}
+                        <div class="flex justify-between gap-3 mb-2">
+                            <p class="font-inter text-sm" style="color:#24313A;">{{ $unit['type'] }}</p>
+                            <p class="font-inter text-sm" style="color:#24313A;">
+                                {{ $unit['count'] }} · {{ $pct }}%
+                            </p>
                         </div>
-                        <div>
-                            <p class="font-inter text-sm" style="color:#283439;">{{ $lease->tenant->full_name }}</p>
-                            <p class="font-inter text-xs" style="color:#9BABB3;">{{ $lease->unit->property->name }} · Unit {{ $lease->unit->unit_number }}</p>
+                        <div class="h-2 rounded-full overflow-hidden" style="background:#E9EEF2;">
+                            <div class="h-full rounded-full"
+                                style="width:{{ $pct }}%; background:#60717D;"></div>
                         </div>
+                        <p class="font-inter text-xs mt-1" style="color:#7B8794;">
+                            Avg @money($unit['avg_rent'])/mo
+                        </p>
                     </div>
-                    <span class="font-inter text-xs font-medium px-2.5 py-1 rounded-full"
-                        style="background-color: {{ $daysLeft <= 7 ? '#FDECEA' : '#E7EFF3' }};
-                               color: {{ $daysLeft <= 7 ? '#9F403D' : '#585E6C' }};">
-                        {{ $daysLeft }}d left
-                    </span>
+                    @empty
+                    <p class="font-inter text-sm" style="color:#7B8794;">No unit data.</p>
+                    @endforelse
                 </div>
-                @empty
-                <div class="px-6 py-8 text-center"><p class="font-inter text-sm" style="color:#9BABB3;">No leases expiring soon.</p></div>
-                @endforelse
             </div>
-        </div>
+
+        </section>
 
     </div>
 
-    <!-- Charts scripts (unchanged) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script>
-        const monthlyData   = @json($this->reportData['monthlyData']);
-        const methodData    = @json($this->reportData['paymentMethods']);
+        function estateFlowReportPayload() {
+            const source = document.getElementById('reportChartPayload');
+            if (!source) return {
+                months: [],
+                methods: [],
+                types: []
+            };
+            try {
+                return JSON.parse(source.dataset.chartPayload || '{}');
+            } catch (e) {
+                return {
+                    months: [],
+                    methods: [],
+                    types: []
+                };
+            }
+        }
 
-        function renderCharts() {
+        function estateFlowMoney(value) {
+            return 'KES ' + Number(value || 0).toLocaleString();
+        }
+
+        function renderEstateFlowReportCharts() {
+            if (!window.Chart) return;
+
+            const payload = estateFlowReportPayload();
+            const source = document.getElementById('reportChartPayload');
+            const basis = source ? source.dataset.basis : 'cash';
+            const months = basis === 'accrual' ?
+                (payload.monthsAccrual || []) :
+                (payload.months || []);
+
             const revenueCtx = document.getElementById('revenueChart');
+            const methodCtx = document.getElementById('methodChart');
+
             if (revenueCtx) {
-                if (window.revenueChartInstance) window.revenueChartInstance.destroy();
-                const maxVal = Math.max(...monthlyData.map(d => d.amount));
-                window.revenueChartInstance = new Chart(revenueCtx, {
+                if (window.estateFlowRevenueChart) window.estateFlowRevenueChart.destroy();
+
+                const maxValue = Math.max(0, ...months.map(item => Number(item.amount || 0)));
+
+                window.estateFlowRevenueChart = new Chart(revenueCtx, {
                     type: 'bar',
                     data: {
-                        labels: monthlyData.map(d => d.month),
+                        labels: months.map(item => item.month),
                         datasets: [{
-                            data: monthlyData.map(d => d.amount),
-                            backgroundColor: monthlyData.map(d => d.amount === maxVal ? '#585E6C' : '#D5DCE3'),
-                            borderRadius: 4,
+                            data: months.map(item => item.amount),
+                            backgroundColor: months.map(item =>
+                                Number(item.amount || 0) === maxValue ? '#35424D' : '#B7C4CC'
+                            ),
+                            borderRadius: 6,
                             borderSkipped: false,
-                        }]
+                            maxBarThickness: 46,
+                        }],
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => 'KES ' + ctx.raw.toLocaleString() } } },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: ctx => estateFlowMoney(ctx.raw),
+                                },
+                            },
+                        },
                         scales: {
-                            x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 }, color: '#9BABB3' }, border: { display: false } },
-                            y: { grid: { color: '#F0F4F7' }, ticks: { font: { family: 'Inter', size: 11 }, color: '#9BABB3', callback: v => 'KES ' + (v / 1000).toFixed(0) + 'k' }, border: { display: false } }
-                        }
-                    }
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: '#7B8794',
+                                    font: {
+                                        family: 'Inter',
+                                        size: 11
+                                    }
+                                },
+                                border: {
+                                    display: false
+                                },
+                            },
+                            y: {
+                                grid: {
+                                    color: '#EEF2F5'
+                                },
+                                ticks: {
+                                    color: '#7B8794',
+                                    font: {
+                                        family: 'Inter',
+                                        size: 11
+                                    },
+                                    callback: value =>
+                                        'KES ' + (Number(value) / 1000).toFixed(0) + 'k',
+                                },
+                                border: {
+                                    display: false
+                                },
+                            },
+                        },
+                    },
                 });
             }
-            const methodCtx = document.getElementById('methodChart');
-            if (methodCtx && methodData.length > 0) {
-                if (window.methodChartInstance) window.methodChartInstance.destroy();
-                window.methodChartInstance = new Chart(methodCtx, {
+
+            if (methodCtx) {
+                if (window.estateFlowMethodChart) window.estateFlowMethodChart.destroy();
+                const methods = payload.methods || [];
+                window.estateFlowMethodChart = new Chart(methodCtx, {
                     type: 'doughnut',
                     data: {
-                        labels: methodData.map(d => d.method),
-                        datasets: [{ data: methodData.map(d => d.total), backgroundColor: ['#585E6C', '#8B9299', '#B5BBC0', '#D5DCE3'], borderWidth: 0, hoverOffset: 4 }]
+                        labels: methods.map(item => item.method),
+                        datasets: [{
+                            data: methods.map(item => item.total),
+                            backgroundColor: ['#35424D', '#1F7A4D', '#9F403D', '#8A5A12', '#7B8794'],
+                            borderWidth: 0,
+                            hoverOffset: 4,
+                        }],
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        cutout: '70%',
+                        cutout: '68%',
                         plugins: {
-                            legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 }, color: '#9BABB3', padding: 12, boxWidth: 10, boxHeight: 10 } },
-                            tooltip: { callbacks: { label: ctx => ctx.label + ': KES ' + ctx.raw.toLocaleString() } }
-                        }
-                    }
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: ctx => ctx.label + ': ' + estateFlowMoney(ctx.raw),
+                                },
+                            },
+                        },
+                    },
                 });
             }
         }
 
-        document.addEventListener('DOMContentLoaded', renderCharts);
-        document.addEventListener('livewire:navigated', renderCharts);
-        Livewire.hook('commit', ({ succeed }) => { succeed(() => { requestAnimationFrame(renderCharts); }); });
+        document.addEventListener('DOMContentLoaded', renderEstateFlowReportCharts);
+        document.addEventListener('livewire:navigated', renderEstateFlowReportCharts);
+
+        function hookEstateFlowReportCharts() {
+            if (!window.Livewire || window.estateFlowReportChartsHooked) return;
+            window.estateFlowReportChartsHooked = true;
+            Livewire.hook('commit', ({
+                succeed
+            }) => {
+                succeed(() => requestAnimationFrame(renderEstateFlowReportCharts));
+            });
+        }
+        hookEstateFlowReportCharts();
+        document.addEventListener('livewire:init', hookEstateFlowReportCharts);
     </script>
 
     <style>
         @media print {
-            nav, select, button, .print\:hidden { display: none !important; }
-            body { background: white !important; }
-            .rounded-xl { box-shadow: none !important; }
-            @page { margin: 1.5cm; }
+
+            nav,
+            select,
+            button,
+            .print\:hidden {
+                display: none !important;
+            }
+
+            body {
+                background: white !important;
+            }
+
+            .rounded-lg {
+                box-shadow: none !important;
+                border: 1px solid #E5EBEF;
+                break-inside: avoid;
+            }
+
+            @page {
+                margin: 1.4cm;
+            }
         }
     </style>
 </div>

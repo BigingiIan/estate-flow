@@ -48,6 +48,7 @@ There are no separate tenant, agent, or staff application roles in the current s
 
 ### Dashboard and reporting
 
+- Comprehensive financial and operational reporting dashboard page
 - KPI cards for rent collected, arrears, and occupancy
 - Vacancy cost tracking
 - Priority arrears and payment reliability signals
@@ -79,10 +80,53 @@ There are no separate tenant, agent, or staff application roles in the current s
 - MySQL 8.0+
 - MySQL client tools if you want to run local DB backup automation:
   `mysqldump` or `mariadb-dump`
+- **[Optional but recommended] Laragon** for local development on Windows
 
 ---
 
 ## Installation
+
+### Using Laragon (Recommended for Windows)
+
+1. Clone the repository into your Laragon `www` directory:
+   ```bash
+   cd C:\laragon\www
+   git clone https://github.com/your-username/estate-flow.git
+   cd estate-flow
+   ```
+
+2. Install dependencies:
+   ```bash
+   composer install
+   npm install
+   ```
+
+3. Set up the environment:
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+4. Configure your database in `.env` (Laragon defaults):
+   ```env
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=estate_flow
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+
+5. Initialize the database and build assets:
+   ```bash
+   php artisan migrate:fresh --seed
+   npm run build
+   ```
+
+6. Access the application in your browser at `http://estate-flow.test`. 
+   > Note: You do not need to run `php artisan serve` when using Laragon, as it automatically provisions the virtual host. Keep `npm run dev` running in a separate terminal during active development.
+
+### Standard Installation
 
 ```bash
 git clone https://github.com/your-username/estate-flow.git

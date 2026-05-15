@@ -15,14 +15,14 @@ state([
 
 mount(function () {
     $prefs = session('estateflow_prefs', []);
-    $this->show_sandbox_banner = $prefs['show_sandbox_banner'] ?? true;
+    $this->show_sandbox_banner = $prefs['show_sandbox_banner'] ?? false;
     $this->compact_dashboard   = $prefs['compact_dashboard']   ?? false;
     $this->demo_sms_mode       = $prefs['demo_sms_mode']       ?? true;
     $this->currency            = $prefs['currency']            ?? 'KES';
     $this->date_format         = $prefs['date_format']         ?? 'd M Y';
 });
 
-$saveSettings = function (){
+$saveSettings = function () {
     $prefs = [
         'show_sandbox_banner' => $this->show_sandbox_banner,
         'compact_dashboard'   => $this->compact_dashboard,
@@ -187,11 +187,11 @@ $resetSandbox = function () {
                     <p class="font-inter text-xs mt-2" style="color:#9BABB3;">
                         Preview: KES 35,000 =
                         @php
-                            $rates = ['KES' => 1.0, 'USD' => 0.0077, 'GBP' => 0.0061, 'EUR' => 0.0071];
-                            $rate  = $rates[$currency] ?? 1.0;
-                            $converted = 35000 * $rate;
-                    @endphp
-                    {{ $currency }} {{ number_format($converted, $currency === 'KES' ? 0 : 2) }}
+                        $rates = ['KES' => 1.0, 'USD' => 0.0077, 'GBP' => 0.0061, 'EUR' => 0.0071];
+                        $rate = $rates[$currency] ?? 1.0;
+                        $converted = 35000 * $rate;
+                        @endphp
+                        {{ $currency }} {{ number_format($converted, $currency === 'KES' ? 0 : 2) }}
                     </p>
                 </div>
 
@@ -257,7 +257,7 @@ $resetSandbox = function () {
                         style="background-color:#585E6C;">
                         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                         </svg>
                     </div>
                     <div>
@@ -283,7 +283,7 @@ $resetSandbox = function () {
                         style="background-color:#E7EFF3;">
                         <svg class="w-4 h-4" style="color:#9BABB3;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                     </div>
                     <div>
@@ -309,7 +309,7 @@ $resetSandbox = function () {
                         style="background-color:#E7EFF3;">
                         <svg class="w-4 h-4" style="color:#9BABB3;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                         </svg>
                     </div>
                     <div>
